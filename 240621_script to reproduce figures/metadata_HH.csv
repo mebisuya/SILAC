@@ -1,0 +1,33 @@
+Experiment,Replicate,Fraction,source_file,time,Sample,ID,ctrl.ID,WCL.ID
+Exp14_2,Rep1,WCL,S1904_merged_results_20200613_0953_proteins.txt,2,mouse,WCL_2h_Mm_Rep1,WCL_2h_Mm_Rep1,WCL_2h_Mm_Rep1
+Exp14_2,Rep1,WCL,S1905_merged_results_20200614_2303_proteins.txt,6,mouse,WCL_6h_Mm_Rep1,WCL_2h_Mm_Rep1,WCL_6h_Mm_Rep1
+Exp14_2,Rep1,WCL,S1906_merged_results_20200615_0051_proteins.txt,12,mouse,WCL_12h_Mm_Rep1,WCL_2h_Mm_Rep1,WCL_12h_Mm_Rep1
+Exp14_2,Rep1,WCL,S1907_merged_results_20200617_1348_proteins.txt,2,human,WCL_2h_Hs_Rep1,WCL_2h_Hs_Rep1,WCL_2h_Hs_Rep1
+Exp14_2,Rep1,WCL,S1908_merged_results_20200616_2036_proteins.txt,6,human,WCL_6h_Hs_Rep1,WCL_2h_Hs_Rep1,WCL_6h_Hs_Rep1
+Exp14_2,Rep1,WCL,S1909_merged_results_20200616_2026_proteins.txt,12,human,WCL_12h_Hs_Rep1,WCL_2h_Hs_Rep1,WCL_12h_Hs_Rep1
+Exp14_3,Rep2,WCL,S2087_merged_results_20200613_1106_proteins.txt,0.5,mouse,WCL_0.5h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_0.5h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2088_merged_results_20200616_0841_proteins.txt,1,mouse,WCL_1h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_1h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2089_merged_results_20200617_1315_proteins.txt,1.5,mouse,WCL_1.5h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_1.5h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2090_merged_results_20200613_0933_proteins.txt,2,mouse,WCL_2h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_2h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2091_merged_results_20200614_1445_proteins.txt,3,mouse,WCL_3h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_3h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2092_merged_results_20200613_2130_proteins.txt,6,mouse,WCL_6h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_6h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2093_merged_results_20200617_1331_proteins.txt,12,mouse,WCL_12h_Mm_Rep2,WCL_2h_Mm_Rep2,WCL_12h_Mm_Rep2
+Exp14_3,Rep2,WCL,S2094_merged_results_20200612_0840_proteins.txt,0.5,human,WCL_0.5h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_0.5h_Hs_Rep2
+Exp14_3,Rep2,WCL,S2095_merged_results_20200610_1247_proteins.txt,1,human,WCL_1h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_1h_Hs_Rep2
+Exp14_3,Rep2,WCL,S2096_merged_results_20200610_1810_proteins.txt,1.5,human,WCL_1.5h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_1.5h_Hs_Rep2
+Exp14_3,Rep2,WCL,S2097_merged_results_20200610_1810_proteins.txt,2,human,WCL_2h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_2h_Hs_Rep2
+Exp14_3,Rep2,WCL,S2098_merged_results_20200611_0658_proteins.txt,3,human,WCL_3h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_3h_Hs_Rep2
+Exp14_3,Rep2,WCL,S2099_merged_results_20200611_0742_proteins.txt,6,human,WCL_6h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_6h_Hs_Rep2
+Exp14_3,Rep2,WCL,S2100_merged_results_20200611_2235_proteins.txt,12,human,WCL_12h_Hs_Rep2,WCL_2h_Hs_Rep2,WCL_12h_Hs_Rep2
+Exp14_4,Rep3,WCL,S3188_merged_results_20220707_0820_proteins.txt,1.5,mouse,WCL_1.5  h_Mm_Rep3,WCL_1.5  h_Mm_Rep3,WCL_1.5  h_Mm_Rep3
+Exp14_4,Rep3,WCL,S3189_merged_results_20220707_1152_proteins.txt,3,mouse,WCL_3  h_Mm_Rep3,WCL_1.5  h_Mm_Rep3,WCL_3  h_Mm_Rep3
+Exp14_4,Rep3,WCL,S3190_merged_results_20220707_1234_proteins.txt,6,mouse,WCL_6  h_Mm_Rep3,WCL_1.5  h_Mm_Rep3,WCL_6  h_Mm_Rep3
+Exp14_4,Rep3,WCL,S3191_merged_results_20220707_1311_proteins.txt,12,mouse,WCL_12  h_Mm_Rep3,WCL_1.5  h_Mm_Rep3,WCL_12  h_Mm_Rep3
+Exp14_4,Rep3,WCL,S3192_merged_results_20220708_1311_proteins.txt,1.5,human,WCL_1.5  h_Hs_Rep3,WCL_1.5  h_Hs_Rep3,WCL_1.5  h_Hs_Rep3
+Exp14_4,Rep3,WCL,S3193_merged_results_20220708_1349_proteins.txt,3,human,WCL_3  h_Hs_Rep3,WCL_1.5  h_Hs_Rep3,WCL_3  h_Hs_Rep3
+Exp14_4,Rep3,WCL,S3194_merged_results_20220715_1907_proteins.txt,6,human,WCL_6  h_Hs_Rep3,WCL_1.5  h_Hs_Rep3,WCL_6  h_Hs_Rep3
+Exp14_4,Rep3,WCL,S3195_merged_results_20220715_1942_proteins.txt,12,human,WCL_12  h_Hs_Rep3,WCL_1.5  h_Hs_Rep3,WCL_12  h_Hs_Rep3
+Exp14_4,Rep3,WCL,S3196_merged_results_20220830_1336_proteins.txt,1.5,mouse_2DG,WCL_1.5  h_Mm_2DG_Rep3,WCL_1.5  h_Mm_2DG_Rep3,WCL_1.5  h_Mm_2DG_Rep3
+Exp14_4,Rep3,WCL,S3197_merged_results_20220715_1710_proteins.txt,3,mouse_2DG,WCL_3  h_Mm_2DG_Rep3,WCL_1.5  h_Mm_2DG_Rep3,WCL_3  h_Mm_2DG_Rep3
+Exp14_4,Rep3,WCL,S3198_merged_results_20220715_1624_proteins.txt,6,mouse_2DG,WCL_6  h_Mm_2DG_Rep3,WCL_1.5  h_Mm_2DG_Rep3,WCL_6  h_Mm_2DG_Rep3
+Exp14_4,Rep3,WCL,S3199_merged_results_20220715_1934_proteins.txt,12,mouse_2DG,WCL_12  h_Mm_2DG_Rep3,WCL_1.5  h_Mm_2DG_Rep3,WCL_12  h_Mm_2DG_Rep3
