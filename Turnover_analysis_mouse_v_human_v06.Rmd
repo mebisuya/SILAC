@@ -1,0 +1,3960 @@
+---
+title: 'Protein turnover analysis in mouse and human cells'
+author:
+    - name: "Henrik Hammarén, PhD"
+      email: "henrik.hammaren@gmail.com, henrik.m.hammaren@gsk.com"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::html_clean:
+    code_folding: hide
+    self_contained: true
+    thumbnails: true
+    lightbox: true
+    gallery: false
+    highlight: tango
+editor_options:
+  chunk_output_type: inline   
+description: >
+---
+
+# Set up
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE,
+                      include = T,
+                      message = F,
+                      warning = F)
+
+VERSION <- "v06"
+
+FONT_SIZE_PAPER <- 8
+PLOT_TEXT_SIZE <- 2
+
+OUTLIER_SIZE <- 0.3
+LINEWIDTH <- 0.3
+
+```
+
+## Load packages
+
+```{r Load packages, warning=F, message=F}
+
+library(tidyverse)
+library(readr)
+library(beeswarm)
+library(ggrepel)
+library(gridExtra)
+library(grid)
+library(ggbeeswarm)
+library(Hmisc)
+library(ggpubr)
+library(pheatmap)
+library(RColorBrewer)
+library(UpSetR)
+library(GGally)
+library(viridis)
+library(MASS) 
+library(plotly)
+library(BiocManager)
+library(magrittr)
+library(devtools)
+library(eulerr)
+library(ggridges)
+library(pheatmap)
+library(cowplot)
+library(stringr)
+library(svglite)
+library(fgsea)
+library(ggpointdensity)
+library(fabricatr)
+library(scales)
+library(xlsx)
+
+
+if (!require(vsn)) BiocManager::install("vsn")
+library(vsn)
+
+if (!require(limma)) BiocManager::install("limma")
+library(limma)
+ 
+if (!require(org.Hs.eg.db)) BiocManager::install("org.Hs.eg.db")
+library("org.Hs.eg.db")
+# 
+if (!require(org.Mm.eg.db)) BiocManager::install("org.Mm.eg.db")
+library("org.Mm.eg.db")
+# 
+if (!require(GO.db)) BiocManager::install("GO.db")
+library("GO.db")
+# 
+if (!require(biomaRt)) BiocManager::install("biomaRt")
+library("biomaRt")
+
+if (!require(clusterProfiler)) BiocManager::install("clusterProfiler")
+library("clusterProfiler")
+
+```
+
+## Set functions
+
+```{r Functions, warning=F, message=F}
+
+COLOR_VECTOR_SAMPLE <- c('human' = 'orange',
+                         'mouse' = 'steelblue',
+                         'mouse_2DG' = '#c08ced',
+                         'mouse\n2DG' = '#c08ced')
+
+COLOR_VECTOR_SAMPLE_TIME <- c('human_0.5' = '#FFE6BC',
+                              'human_1' = '#FFE4B6',
+                              'human_1.5' = '#FFDEA4',
+                              'human_2' = '#FFD488',
+                              'human_3' = '#FFC763',
+                              'human_6' = '#FFB735',
+                              'human_12' = 'orange',
+                              'mouse_0.5' = '#CFDEEB',
+                              'mouse_1' = '#CADBE9',
+                              'mouse_1.5' = '#BED2E4',
+                              'mouse_2' = '#A9C5DC',
+                              'mouse_3' = '#8EB2D1',
+                              'mouse_6' = '#6D9CC3',
+                              'mouse_12' = 'steelblue',
+                              'mouse_2DG_0.5' = '#EBDBF9',
+                              'mouse_2DG_1' = '#E9D8F8',
+                              'mouse_2DG_1.5' = '#E5D0F7',
+                              'mouse_2DG_2' = '#DFC5F5',
+                              'mouse_2DG_3' = '#D6B6F3',
+                              'mouse_2DG_6' = '#CCA2F0',
+                              'mouse_2DG_12' = '#c08ced')
+
+## Set colors for subcellular annotation
+COLOR_CC <- c("extracellular matrix" = "#91638e",
+              "extracellular region" = "#DD8DD8",
+              "plasma membrane" = "brown",
+              "cytoskeleton" = "#D53E4F",
+              "cytoplasm" = "#FC8D59",
+              "cytosol" = "#FEE08B",
+              "mitochondrion" = "#66D775",
+              "lysosome" = "#57f2de",
+              "Golgi apparatus" = "#73bab1",
+              "peroxisome" = "#74cca0",
+              "ER" = "#2f8a7e",
+              "nuclear membrane" = "#8b9af7",
+              "nucleus" = "#6A78C8",
+              "nucleoplasm" = "#8791cc",
+              "nucleolus" = "#253699",
+              "ambiguous" = "grey")
+
+COLOR_HITS <- c("faster in human" = "orange",
+                "slower in human" = "steelblue",
+                "no difference" = "grey")
+
+COLOR_HITS_2DG <- c("faster in 2DG" = "#c08ced",
+                "slower in 2DG" = "steelblue",
+                "no difference" = "grey")
+
+theme_HH_paper <- list(theme_classic(base_size = FONT_SIZE_PAPER),
+                         theme(
+                           line = element_line(linewidth = 0.3),
+                           panel.background = element_rect(fill = "transparent"),
+                           panel.grid.major.x = element_blank(),
+                           #panel.grid.major.y = element_line(linetype = "dashed", color = "grey80"),
+                           panel.grid.major.y = element_blank(),
+                           axis.line.x = element_line(),
+                           axis.title = element_text(size = FONT_SIZE_PAPER),
+                           axis.text = element_text(size = FONT_SIZE_PAPER, color = "black"),
+                           legend.text = element_text(size = FONT_SIZE_PAPER, color = "black"),
+                           title = element_text(size = FONT_SIZE_PAPER),
+                           strip.background = element_blank()
+                           ),
+                         guides(colour = guide_legend(override.aes = list(alpha = 1,
+                                                                          size = 1))))
+
+theme_HH_scatter_paper <- list(theme_classic(base_size = FONT_SIZE_PAPER),
+                         theme(
+                           line = element_line(linewidth = 0.3),
+                           panel.grid.major.x = element_line(linewidth = 0.1, linetype = "solid", color = "grey90"),
+                           panel.grid.major.y = element_line(linewidth = 0.1, linetype = "solid", color = "grey90"),
+                           panel.grid.minor.x = element_line(linewidth = 0.1, linetype = "solid", color = "grey90"),
+                           panel.grid.minor.y = element_line(linewidth = 0.1, linetype = "solid", color = "grey90"),
+                           axis.line.x = element_blank(),
+                           axis.line.y = element_blank(),
+                           axis.ticks = element_line(linewidth = 0.3),
+                           axis.title = element_text(size = FONT_SIZE_PAPER),
+                           axis.text = element_text(size = FONT_SIZE_PAPER, color = "black"),
+                           legend.text = element_text(size = FONT_SIZE_PAPER, color = "black"),
+                           title = element_text(size = FONT_SIZE_PAPER),
+                           strip.background = element_blank(),
+                           panel.background = element_blank(),
+                           panel.border = element_rect(linewidth = 0.3, color = "black",
+                                                       fill = NA),
+                           plot.background = element_blank(),
+                           plot.margin = grid::unit(c(0,0,0,0), "mm")
+                           ),
+                         guides(colour = guide_legend(override.aes = list(alpha = 1,
+                                                                          size = 1))))
+
+
+l_workflow <- list()
+
+## Make function to extract number of entries at different levels of the workflow
+f_n_entries <- function(fdf, stage = "") {
+  c("stage" = stage,
+    "n_gene_name" = n_distinct(fdf$gene_name))
+}
+
+```
+
+## Read in data
+
+```{r Read in data, warning = FALSE}
+#  Read in metadata
+metadata <- read_delim(list.files(pattern = "metadata_HH.csv$"), ",")
+
+## Order metadata
+metadata <- metadata[order(metadata$time),]
+
+# list all txt files from the current directory
+list.filenames<-list.files(path = "./data/",
+                           pattern=".txt$")
+
+# Check that files in metadata and folder match 
+if(all(metadata$source_file[order(metadata$source_file)] == list.filenames[order(list.filenames)])) {
+  print("All files in metadata file found.", quote = 0)
+} else {
+  print("Files in metadata and folder do not match.", quote = 0)
+  knitr::knit_exit()
+}
+
+# create an empty list that will serve as a container to receive the incoming files
+list.data<-list()
+
+# create a loop to read in and analyze data
+for (i in 1:length(list.filenames)) {
+  
+  #Read in data
+  list.data[[i]]<-read_delim(paste0("./data/", list.filenames[i]), "\t")
+  
+  print(paste0("Reading in ", list.filenames[i]), quote = 0)
+  
+  ## Add info on, where data came from
+  list.data[[i]]$source_file <- list.filenames[i]
+  
+  ## Add column with total signal sum info
+  list.data[[i]]$Total_Signal_Sum <- rowSums(list.data[[i]][,grep("signal_sum", colnames(list.data[[i]]))])
+}
+
+# Combine all dataframes into one
+df_raw_data <- do.call(rbind, list.data)
+df <- df_raw_data
+
+rm(i, list.data, dups, before, after, list.filenames)
+
+```
+## Filtering of data (remove contaminants, filter for qupm)
+
+```{r Clean and prepare data}
+
+#Remove rows with contaminants
+before <- n_distinct(df$gene_name)
+df <- df[!grepl("###",df$protein_id),] 
+print(paste0("Removed ", before-n_distinct(df$gene_name), " contaminant or reverse (decoy) gene names."))
+
+#Remove entries with less than 2 qupm
+before <- n_distinct(df$gene_name)
+df <- filter(df, qupm > 1)
+print(paste0("Started with ", before, " non-contaminant gene names across both species./nRemoved ", before-n_distinct(df$gene_name), " gene names with qupm < 2."))
+
+#Remove rows without quantification data
+before <- n_distinct(df$gene_name)
+df <- df[df$Total_Signal_Sum > 0,]
+df <- df[!is.na(df$Total_Signal_Sum), ]
+print(paste0("Removed ", before-n_distinct(df$gene_name), " gene names with no quantification data at all."))
+
+print(paste0("Left with ", n_distinct(df$gene_name), " gene names across both species over all input data."))
+
+rm(before, after)
+```
+
+### Adding metadata
+
+```{r Add metadata}
+
+df <- left_join(df,
+                metadata %>% dplyr::select(-Fraction),
+                by = c("source_file")) %>% 
+    mutate(Sample = factor(Sample,
+                         levels = c("mouse",
+                                    "human",
+                                    "mouse_2DG")))
+
+## Reorder
+df <- df[order(df$time),]
+```
+
+### Get orthologous gene names for mapping between species
+
+```{r orthologous gene names, warning = FALSE}
+
+df_Hs2Mm <- read.csv("./gene_names_mouse_human_df.csv")
+
+df <- rbind(df %>%
+                ungroup() %>% 
+                filter(Sample == "human") %>% 
+                rename(gene_name_Hs = gene_name) %>% 
+                left_join(df_Hs2Mm,
+                          by = "gene_name_Hs"),
+            df %>%
+                ungroup() %>%
+                filter(Sample == "mouse") %>% 
+                mutate(gene_name_Mm = tolower(gene_name) %>% capitalize()) %>% 
+                dplyr::select(-gene_name) %>% 
+                left_join(df_Hs2Mm,
+                          by = "gene_name_Mm"),
+            df %>%
+                ungroup() %>%
+                filter(Sample == "mouse_2DG") %>% 
+                mutate(gene_name_Mm = tolower(gene_name) %>% capitalize()) %>% 
+                dplyr::select(-gene_name) %>% 
+                left_join(df_Hs2Mm,
+                          by = "gene_name_Mm")) %>% 
+  ## Choose human gene name to go forward with
+  mutate(gene_name = gene_name_Hs)
+
+## For the cases, where there is no human homologue, choose the mouse gene name
+df$gene_name[is.na(df$gene_name)] <- df$gene_name_Mm[is.na(df$gene_name)]
+
+## Some special cases...
+df$gene_name[grepl("^Kifc5b$", df$gene_name_Mm)] <- df$gene_name_Mm[grepl("^Kifc5b$", df$gene_name_Mm)]
+df$gene_name[grepl("^Gm14325$", df$gene_name_Mm)] <- df$gene_name_Mm[grepl("^Gm14325$", df$gene_name_Mm)]
+
+print(paste0("After mapping of gene names across species, left with ", n_distinct(df$gene_name), " gene names."))
+
+```
+
+### VSN normalization of Total Signal Sum (will not affect H2L ratios)
+
+Will only be used for PCA and MA plots
+
+```{r VSN normalization, warning = FALSE, message = FALSE}
+
+#### ------ VSN normalization ---- ####
+## Calculate normalized intensities across all samples within each experiment using vsn
+list.df <- list()
+
+## Cycle through experiments
+for(i in 1:length(unique(df$Experiment))) {
+  
+  ## Choose only Total_Signal_Sums and convert to wide format
+  df_vsn <- subset(df,
+                   Experiment == unique(df$Experiment)[i],
+                   select = c("gene_name", "protein_id", "source_file", "Total_Signal_Sum")) %>% 
+    unique() %>% 
+    arrange(gene_name)
+  
+  df_vsn <- spread(df_vsn, source_file, Total_Signal_Sum)
+  
+  
+  ## Make matrix out of dataset being processed
+  prot_mat <- as.matrix(df_vsn[,-1])
+  
+  
+  ## Make all values of 0 in the signal sum to NA
+  prot_mat[prot_mat == 0] <- NA
+
+  ## Do the VSN normalization and add it back to the original data
+  vsn_fit <- vsn2(prot_mat)
+  # meanSdPlot(vsn_fit)
+  vsn_norm <- predict(vsn_fit, prot_mat)
+  
+  ## Remove old values from df_vsn (only leaving gene_names) and add vsn_norm values
+  df_vsn <- bind_cols(df_vsn[,1] %>% dplyr::select(everything()), as_tibble(2^vsn_norm))
+  
+  ## Transform back into long format
+  df_vsn <- gather(df_vsn, source_file, vsn_norm_TotalSignalSum, -gene_name, na.rm = TRUE)
+  
+  ## Add to original data frame
+  list.df[[i]] <- left_join(subset(df, Experiment == unique(df$Experiment)[i]),
+                            df_vsn,
+                            by = c("source_file", "gene_name"))
+}
+
+# Combine all dataframes into one
+df <- do.call(rbind, list.df)
+
+rm(prot_mat, vsn_norm, df_vsn, vsn_fit, list.df, i)
+
+```
+
+## Comparison of replicates
+
+Number of unique gene names in each replicate
+
+```{r}
+
+FIG_WIDTH <- 6
+FIG_HEIGHT <- 3
+
+FILENAME <- "FigureS_Unique_gene_names_each_sample"
+
+df_plot <- df %>% 
+  dplyr::select(Sample, Replicate, time, gene_name) %>% 
+  mutate(fill = paste0(Sample, "_", time)) %>% 
+  mutate(x = factor(paste0(Sample, " -      ", Replicate, " - ", time, "h"),
+                    levels = c("human -      Rep1 - 0.5h",
+                               "human -      Rep1 - 1h",
+                               "human -      Rep1 - 1.5h",
+                               "human -      Rep1 - 2h",
+                               "human -      Rep1 - 3h",
+                               "human -      Rep1 - 6h",
+                               "human -      Rep1 - 12h",
+                               "mouse -      Rep1 - 0.5h",
+                               "mouse -      Rep1 - 1h",
+                                  "mouse -      Rep1 - 1.5h",
+                                  "mouse -      Rep1 - 2h",
+                                  "mouse -      Rep1 - 3h",
+                                  "mouse -      Rep1 - 6h",
+                                  "mouse -      Rep1 - 12h",
+                               "human -      Rep2 - 0.5h",
+                               "human -      Rep2 - 1h",
+                               "human -      Rep2 - 1.5h",
+                               "human -      Rep2 - 2h",
+                               "human -      Rep2 - 3h",
+                               "human -      Rep2 - 6h",
+                               "human -      Rep2 - 12h",
+                               "mouse -      Rep2 - 0.5h",
+                               "mouse -      Rep2 - 1h",
+                                  "mouse -      Rep2 - 1.5h",
+                                  "mouse -      Rep2 - 2h",
+                                  "mouse -      Rep2 - 3h",
+                                  "mouse -      Rep2 - 6h",
+                                  "mouse -      Rep2 - 12h",
+                               "human -      Rep3 - 0.5h",
+                               "human -      Rep3 - 1h",
+                               "human -      Rep3 - 1.5h",
+                               "human -      Rep3 - 2h",
+                               "human -      Rep3 - 3h",
+                               "human -      Rep3 - 6h",
+                               "human -      Rep3 - 12h",
+                               "mouse -      Rep3 - 0.5h",
+                               "mouse -      Rep3 - 1h",
+                                  "mouse -      Rep3 - 1.5h",
+                                  "mouse -      Rep3 - 2h",
+                                  "mouse -      Rep3 - 3h",
+                                  "mouse -      Rep3 - 6h",
+                                  "mouse -      Rep3 - 12h",
+                                  "mouse_2DG -      Rep3 - 1.5h",
+                                  "mouse_2DG -      Rep3 - 3h",
+                                  "mouse_2DG -      Rep3 - 6h",
+                                  "mouse_2DG -      Rep3 - 12h"))) %>% 
+  arrange(x) %>% 
+  distinct()
+
+ggplot(df_plot,
+       aes(x = x,
+           fill = fill)) +
+  geom_bar(position = "dodge") +
+  xlab(label = "") +
+  ylab(label = bquote(~ "unique gene names")) +
+  theme_HH_scatter_paper +
+  scale_fill_manual(values = COLOR_VECTOR_SAMPLE_TIME) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1)) +
+  guides(fill = FALSE) +
+  ggtitle("Number of unique gene names per sample\nbefore filtering for SILAC quant")
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+openxlsx::write.xlsx(df_plot %>% 
+              dplyr::select(Sample, Replicate, time, gene_name) %>% 
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         row.names = F)
+
+
+```
+
+## PCA of vsn-corrected values
+
+Use median of value for each gene name
+
+```{r PCA of vsn data}
+
+FIG_WIDTH <- 3.5
+FIG_HEIGHT <- 2.5
+
+FILENAME <- "FigureS_PCA_total_intensity"
+
+## Data for PCA
+df_temp <- df %>% 
+  mutate(log_vsn = log2(vsn_norm_TotalSignalSum)) %>% 
+  group_by(gene_name, source_file) %>% 
+  summarise(log_vsn = median(log_vsn)) %>% 
+  pivot_wider(names_from = source_file,
+              values_from = log_vsn)
+  
+df_PCA <- t(na.omit(df_temp))
+
+colnames(df_PCA) <- df_PCA[1,]
+
+df_PCA <- df_PCA[-1,]
+
+df_PCA_m <- mapply(df_PCA, FUN = as.numeric)
+df_PCA_m <- matrix(data = df_PCA_m, ncol = ncol(df_PCA), nrow = nrow(df_PCA))
+
+## Remove any infinite values
+df_PCA_m[df_PCA_m == -Inf] <- NA
+df_PCA_m <- t(na.omit(t(df_PCA_m)))
+
+## Modifying
+raw_PCA <- prcomp(df_PCA_m, scale = FALSE)
+
+perc_var <-
+  round(100 * raw_PCA$sdev ^ 2 /
+          sum(raw_PCA$sdev ^ 2), 1)
+
+annotations_temp <-
+  tibble(source_file = rownames(df_PCA)) %>% 
+  left_join(metadata %>% 
+              dplyr::select(source_file, Sample, time, Replicate))
+
+PCA_raw_data <-
+  data.frame(PC1 = raw_PCA$x[, 1],
+             PC2 = raw_PCA$x[, 2],
+             Sample = annotations_temp$Sample,
+             time = annotations_temp$time,
+             Replicate = annotations_temp$Replicate) %>% 
+  mutate(fill = paste0(Sample, "_", time))
+
+ggplot(data = PCA_raw_data, aes(PC1, PC2)) +
+  geom_point(aes(fill = fill, shape = Replicate),
+             size = 4,
+             color = "black") +
+  theme_HH_scatter_paper +
+  scale_fill_manual(values = COLOR_VECTOR_SAMPLE_TIME) +
+  scale_shape_manual(values=c("Rep1" = 22,
+                              "Rep2" = 21,
+                              "Rep3" = 23)) +
+  guides(size = FALSE,
+         fill = FALSE) +
+  ggtitle("Vsn-corrected total Intensity (H+L)") +
+  xlab(paste("PC1 - explaining", perc_var[1], "% of variability")) +
+  ylab(paste("PC2 - explaining", perc_var[2], "% of variability"))
+
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(PCA_raw_data %>% 
+              dplyr::select(PC1, PC2, Sample, time, Replicate) %>% 
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "PCA",
+         row.names = F)
+
+
+rm(df_temp, annotations_temp, df_PCA, df_PCA_m, df_temp_w, PCA_raw_data, raw_PCA)
+
+```
+
+## Correlation plot across all samples
+
+```{r}
+
+FIG_WIDTH <- 6
+FIG_HEIGHT <- 6
+
+FILENAME <- "FigureS_pairwise_correlation"
+
+
+df_corr_plot <- df %>% 
+  mutate(log_vsn = log2(vsn_norm_TotalSignalSum),
+         key = paste0(Sample, "_", time, "_", Replicate)) %>% 
+  group_by(gene_name, key) %>% 
+  summarise(log_vsn = median(log_vsn)) %>% 
+  pivot_wider(names_from = key,
+              values_from = log_vsn) %>% 
+  tibble::column_to_rownames("gene_name") %>%   
+  data.matrix()
+  
+
+cor_color <- viridis::viridis(n = 200, alpha = 1)
+
+m_cor <- cor(df_corr_plot, use = "pairwise.complete.obs")
+
+pdf(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+corrplot::corrplot(m_cor, order = "hclust", col = rev(cor_color), mar=c(0,0,1,0),
+                   title = "correlation of vsn-normalized total intensity (H+L)",
+                   type = "full",
+                   tl.col = "black",
+                   tl.cex = 0.5,
+                   is.corr = FALSE
+                   )  
+
+dev.off()
+
+write.xlsx2(m_cor %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "correlation_matrix",
+         row.names = F)
+
+
+```
+
+## Filtering of data (remove cases without SILAC ratios as at least one SILAC channel is missing)
+
+```{r filter for SILAC ratios}
+
+#Remove rows without H2L data
+before <- n_distinct(df$gene_name)
+df <- df[!grepl("NaN", df$rel_fc_HEAVY),]
+df <- df[!grepl("Inf", df$rel_fc_HEAVY),]
+df <- df[!is.na(df$rel_fc_HEAVY),]
+df <- df[df$rel_fc_HEAVY > 0,]
+print(paste0("Removed ", before-n_distinct(df$gene_name), " gene names with no SILAC ratios (as at least one SILAC channel was missing)"))
+
+print(paste0("Left with ", n_distinct(df$gene_name), " gene names across both species over all input data."))
+
+rm(before, after)
+```
+
+## Proteomic ruler quant
+## Based on concept from Wisniewski et al, MCP 2014
+
+```{r proteomic ruler quant}
+
+## Read in histone list
+histones <- read_delim("./Histone_gene_names_old_included.txt",
+                       delim = "\t") %>% 
+  pivot_longer(everything()) %>% 
+  mutate(gene_name = strsplit(value, ",")) %>% 
+  unnest(gene_name) %>% 
+  na.omit() %>% 
+  pull(gene_name) %>% 
+  unique()
+
+## Identify histones in data
+df$Histone <- grepl(paste0(histones, collapse = "|"), df$gene_name)
+
+## How many histones identified
+df %>% 
+  group_by(Sample) %>% 
+  filter(Histone) %>% 
+  summarise(histones = n_distinct(gene_name))
+
+## Calculate signal sum of all histones in each source_file
+df_prot_ruler <- df %>%
+  left_join(
+    df %>% 
+      group_by(source_file) %>% 
+      filter(Histone) %>% 
+      dplyr::select(source_file, gene_name, vsn_norm_TotalSignalSum) %>%
+      distinct() %>% 
+      mutate(Histone_vsn_signal_sum = sum(vsn_norm_TotalSignalSum)) %>% 
+      dplyr::select(source_file, Histone_vsn_signal_sum) %>% 
+      distinct(),
+    by = "source_file") %>% 
+  left_join(
+    df %>% 
+      group_by(source_file) %>% 
+      dplyr::select(source_file, gene_name, vsn_norm_TotalSignalSum) %>%
+      distinct() %>%
+      mutate(Run_Total_vsn_signal_sum = sum(vsn_norm_TotalSignalSum)) %>% 
+      dplyr::select(source_file, Run_Total_vsn_signal_sum) %>% 
+      distinct(),
+    by = "source_file"
+  )
+
+## Calculate histone fractions
+df_prot_ruler <- df_prot_ruler %>% 
+  mutate(Hist_frac = Histone_vsn_signal_sum/Run_Total_vsn_signal_sum)
+
+plots <- list()
+
+## Correct for genomic size and calculate proportion of histones to other proteins per cell
+## Histone content per cell
+
+## Calculate protein copy numbers for all proteins
+## First, add in mass of genomic DNA per cell
+df_prot_ruler$mass_DNA <- 0
+df_prot_ruler$mass_DNA[df_prot_ruler$Sample == "human"] <- 6.5389E-12 ## grams
+df_prot_ruler$mass_DNA[df_prot_ruler$Sample == "mouse"] <- 5.9088E-12 ## grams
+df_prot_ruler$mass_DNA[df_prot_ruler$Sample == "mouse_2DG"] <- 5.9088E-12 ## grams
+
+## Calculate mean molecular weight per protein
+df_prot_ruler <- df_prot_ruler %>%
+  left_join(
+    df_prot_ruler %>% 
+      dplyr::select(gene_name, Sample, mw) %>% 
+      distinct() %>% 
+      mutate(mw = strsplit(mw, "\\|")) %>% 
+      unnest(mw) %>% 
+      mutate(mw = as.numeric(mw)) %>% 
+      group_by(gene_name, Sample) %>% 
+      mutate(mw_mean = mean(mw)) %>%
+      dplyr::select(-mw) %>% 
+      distinct(),
+    by = c("gene_name", "Sample")
+  ) %>% 
+  ## Calculate sum intensity per gene name
+  group_by(gene_name, Sample, time, Replicate) %>% 
+  mutate(sum_vsn_norm_TotalSignalSum = sum(vsn_norm_TotalSignalSum))
+  
+
+## Calculate protein copy numbers per cell
+df_prot_ruler <- df_prot_ruler %>% 
+  ungroup() %>% 
+  mutate(copy_number_per_cell = sum_vsn_norm_TotalSignalSum / mw_mean * mass_DNA / Histone_vsn_signal_sum * 6.022E23)
+  
+## Scatter plot of copy numbers per cell across species
+df_plot <- df_prot_ruler %>% 
+  dplyr::select(gene_name, Sample, time, Replicate, copy_number_per_cell) %>% 
+  distinct()
+
+df_plot_w <- df_plot %>% 
+           pivot_wider(names_from = Sample,
+                       values_from = copy_number_per_cell)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_plot_w,
+         aes(x = log10(human),
+             y = log10(mouse))) +
+    geom_density_2d() +
+    theme_HH_paper +
+    geom_abline() +
+    ggtitle("Protein copy numbers per cell\ngene names matched") +
+    facet_wrap(~time+Replicate)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_plot,
+         aes(x = factor(time),
+             y = log10(copy_number_per_cell),
+             fill = Sample)) +
+    geom_boxplot() +
+    theme_HH_paper +
+    scale_fill_manual(values = COLOR_VECTOR_SAMPLE) +
+    ggtitle("Protein copy numbers per cell") +
+    facet_wrap(~Replicate)
+
+## Median copy number per cell over replicates and timepoints
+#plots[[length(plots)+1]] <-
+FIG_WIDTH <- 1.5
+FIG_HEIGHT <- 3
+PLOT_LIMITS <- c(2, 9)
+
+FILENAME <- "FigureS1b_Copy_numbers"
+
+  ggplot(df_plot %>% 
+           filter(Sample == "human" | Sample == "mouse") %>% 
+           group_by(Sample, gene_name) %>% 
+           summarise(median_copy_number_per_cell = median(copy_number_per_cell)),
+         aes(x = Sample,
+             y = log10(median_copy_number_per_cell),
+             fill = Sample)) +
+    #geom_violin() +
+    geom_boxplot() +
+    theme_HH_paper +
+    scale_fill_manual(values = COLOR_VECTOR_SAMPLE) +
+    ylim(PLOT_LIMITS) +
+    stat_compare_means(
+      label = "p.format",
+      method = "wilcox.test",
+      comparisons = list(c("human", "mouse"))) +
+    ylab(bquote("log" [10] * "(Protein copy number per cell)")) +
+    theme(axis.title.x = element_blank(),
+          legend.position = "none") +
+    stat_summary(fun.data = function(x){
+  data.frame(y=min(x)*0.9,
+             label = length(x))
+}, geom="text")# +
+    #ggtitle("Protein copy numbers per protein (gene name) per cell\nMedian over replicates and timepoints")
+
+  ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+  
+write.xlsx2(df_plot %>% 
+              filter(Sample == "human" | Sample == "mouse") %>% 
+           group_by(Sample, gene_name) %>% 
+           summarise(median_copy_number_per_cell = median(copy_number_per_cell)) %>%  
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+
+
+
+## Look at total number of histones per cell
+df_plot$Histone <- "Other proteins"
+df_plot$Histone[grepl(paste0(histones, collapse = "|"), df_plot$gene_name)] <- "Histones"
+
+df_histones <- df_plot %>% 
+  group_by(Replicate, time, Sample, Histone) %>% 
+  summarise(Sum_proteins = sum(copy_number_per_cell))
+
+## Normalize to median of human protein count
+df_histones <- df_histones %>% 
+  mutate(human_median = df_histones %>% 
+           filter(Sample == "human") %>%
+           group_by(Histone) %>%
+           summarise(human_median = median(Sum_proteins)) %>% 
+           pull(human_median),
+         logFC_human = log2(Sum_proteins/human_median))
+
+plots[[length(plots)+1]] <-
+  ggplot(df_histones,
+         aes(x = Sample,
+             y = logFC_human,
+             fill = Sample)) +
+    geom_boxplot() +
+    geom_beeswarm() +
+    theme_HH_paper +
+    scale_fill_manual(values = COLOR_VECTOR_SAMPLE) +
+    ggtitle("Sum of total number of proteins per cell,\nnormalized to human median\nEach datapoint is one MS run (timepoint, replicate)") +
+    theme(axis.title.x = element_blank()) +
+    facet_wrap(~Histone)
+  
+################
+
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 3
+
+PLOT_LIMITS <- c(6, 10.2)
+
+# FILENAME <- "FigureS_log10_Copy_numbers_composition_human_vs_mouse"
+
+## Median across all timepoints and replicates to match across species
+df_composition_plot <- df_plot %>% 
+    filter(Sample == "human" | Sample == "mouse") %>%
+  ## Get sum for each sample
+  group_by(Histone, Sample, Replicate, time) %>% 
+  summarise(proteins_per_cell = sum(copy_number_per_cell)) %>% 
+  ## Get median across replicates
+  group_by(Histone, Sample) %>% 
+  summarise(median_proteins_per_cell = median(proteins_per_cell),
+            sd_proteins_per_cell = sd(proteins_per_cell),
+            sd_log10_proteins_per_cell = sd(log10(proteins_per_cell)))
+
+
+## log 10
+plots[[length(plots)+1]] <-
+ggplot(df_composition_plot,
+       aes(x = Sample,
+           y = log10(median_proteins_per_cell),
+           fill = Histone)) +
+  geom_col(position = position_dodge(width = 0.55),
+           width = 0.5) +
+  geom_errorbar(aes(ymin = log10(median_proteins_per_cell)-sd_log10_proteins_per_cell,
+                    ymax = log10(median_proteins_per_cell)+sd_log10_proteins_per_cell),
+                position = position_dodge(width = 0.55),
+                width = 0.25) +
+  coord_cartesian(ylim = PLOT_LIMITS) +
+  scale_y_continuous(labels = function(x) format(10^x, scientific = TRUE),
+                     breaks = c(6, 7, 8, 9, 10),
+                     limits = PLOT_LIMITS,
+                     oob = rescale_none) +
+  theme_HH_paper +
+  scale_fill_manual(values = c("Histones" = "grey20",
+                               "Other proteins" = "grey")) +
+  ylab(bquote("log"[10]*" proteins per cell"))
+
+#################
+## Without log scale
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 3
+
+PLOT_LIMITS <- c(6, 10.2)
+
+# FILENAME <- "FigureS_Copy_numbers_composition_human_vs_mouse"
+
+## Manually calculate errorbar positions for stacked plots)
+df_errorbars <- 
+  df_composition_plot %>% 
+  dplyr::select(Sample, Histone, sd_proteins_per_cell) %>% 
+  left_join(
+  df_composition_plot %>% 
+  dplyr::select(Sample, Histone, median_proteins_per_cell) %>% 
+  pivot_wider(names_from = Histone,
+              values_from = median_proteins_per_cell)) %>% 
+  group_by(Sample) %>% 
+  mutate(sd_min = 
+           case_when(Histone == "Histones" ~ Histones - sd_proteins_per_cell,
+                     T ~ Histones + `Other proteins` - sd_proteins_per_cell),
+         sd_max = 
+           case_when(Histone == "Histones" ~ Histones + sd_proteins_per_cell,
+                     T ~ Histones + `Other proteins` + sd_proteins_per_cell))
+
+plots[[length(plots)+1]] <-
+ggplot(df_composition_plot %>% 
+         mutate(Histone = factor(Histone, levels = c("Other proteins", "Histones"))),
+       aes(x = Sample,
+           fill = Histone)) +
+  geom_col(aes(y = median_proteins_per_cell),
+           position = "stack",
+           width = 0.5) +
+  geom_errorbar(data = df_errorbars,
+                aes(ymin = sd_min,
+                    ymax = sd_max),
+                width = 0.15) +
+  theme_HH_paper +
+  scale_fill_manual(values = c("Histones" = "grey20",
+                               "Other proteins" = "grey")) +
+  ylab(bquote("sum of proteins per cell")) +
+  xlab("") +
+  labs(fill = "")
+
+#################
+## Gene names that can't be mapped
+
+PLOT_LIMITS <- c(6, 10.2)
+
+# FILENAME <- "FigureS_Copy_numbers_composition_human_vs_mouse"
+
+## Median across all timepoints and replicates to match across species
+df_composition_plot <- df_plot %>% 
+    filter(Sample == "human" | Sample == "mouse") %>%
+  ## Check, whether is present in both
+  group_by(gene_name, Replicate, time) %>% 
+  mutate(present_in_n_species = n_distinct(Sample)) %>%
+  ungroup() %>% 
+  mutate(present_in_species = 
+           case_when(
+             present_in_n_species == 2 ~ "present in both species",
+             T ~ "present in only one species") %>% 
+           factor(levels = c("present in only one species", "present in both species"))) %>% 
+  ## Get sum for each sample
+  group_by(present_in_species, Sample, Replicate, time) %>% 
+  summarise(proteins_per_cell = sum(copy_number_per_cell)) %>% 
+  ## Get median across replicates
+  group_by(present_in_species, Sample) %>% 
+  summarise(median_proteins_per_cell = median(proteins_per_cell),
+            sd_proteins_per_cell = sd(proteins_per_cell),
+            sd_log10_proteins_per_cell = sd(log10(proteins_per_cell)))
+
+## Manually calculate errorbar positions for stacked plots)
+df_errorbars <- 
+  df_composition_plot %>% 
+  dplyr::select(Sample, present_in_species, sd_proteins_per_cell) %>% 
+  left_join(
+  df_composition_plot %>% 
+  dplyr::select(Sample, present_in_species, median_proteins_per_cell) %>% 
+  pivot_wider(names_from = present_in_species,
+              values_from = median_proteins_per_cell)) %>% 
+  group_by(Sample) %>% 
+  mutate(sd_min = 
+           case_when(present_in_species == "present in both species" ~ `present in both species` - sd_proteins_per_cell,
+                     T ~ `present in both species` + `present in only one species` - sd_proteins_per_cell),
+         sd_max = 
+           case_when(present_in_species == "present in both species" ~ `present in both species` + sd_proteins_per_cell,
+                     T ~ `present in both species` + `present in only one species` + sd_proteins_per_cell))
+  
+plots[[length(plots)+1]] <-
+ggplot(df_composition_plot,
+       aes(x = Sample,
+           fill = present_in_species)) +
+  geom_col(aes(y = median_proteins_per_cell),
+           position = "stack",
+           width = 0.5) +
+  geom_errorbar(data = df_errorbars,
+                aes(ymin = sd_min,
+                    ymax = sd_max),
+                width = 0.15) +
+  theme_HH_paper +
+  scale_fill_manual(values = c("present in both species" = "grey20",
+                               "present in only one species" = "grey")) +
+  ylab(bquote("sum of proteins per cell")) +
+  xlab("") +
+  labs(fill = "")
+
+ggexport(ggarrange(plotlist = plots, nrow = 1, ncol = 1, widths = 5), filename = paste0("Copy_numbers_per_cell_", VERSION, ".pdf"))
+```
+
+### Protein copy number per cell across samples
+
+Median across timepoints and replicates
+
+```{r}
+
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 3
+
+PLOT_LIMITS <- c(2.5, 8)
+
+FILENAME <- "FigureS_Copy_numbers_human_vs_mouse"
+
+## Median across all timepoints and replicates to match across species
+df_median_copy_numbers <- df_plot %>% 
+    filter(Sample == "human" | Sample == "mouse") %>%
+  group_by(gene_name, Sample) %>% 
+  summarise(log10_median_copy_number_per_cell = log10(median(copy_number_per_cell))) %>% 
+  pivot_wider(names_from = Sample,
+              values_from = log10_median_copy_number_per_cell) %>% 
+  na.omit()
+
+ggplot(df_median_copy_numbers,
+       aes(x = human,
+           y = mouse)) +
+  geom_pointdensity(size = 0.5) +
+  scale_color_viridis() +
+  geom_abline(linewidth = 0.2) +
+  coord_fixed(xlim = PLOT_LIMITS,
+              ylim = PLOT_LIMITS) +
+  xlab(label = bquote(~ "human, protein copy number per cell")) +
+  ylab(label = bquote(~ "mouse, protein copy number per cell")) +
+  theme_HH_scatter_paper +
+  guides(color = FALSE) +
+    geom_text(data = tibble(
+    x = 6,
+    y = 3),
+    aes(x,y, label = paste0("N = ", n_distinct(df_median_copy_numbers$gene_name)))) +
+  scale_x_continuous(labels = function(x) format(10^x, scientific = TRUE),
+                     breaks = c(2, 3, 4, 5, 6, 7, 8),
+                     limits = PLOT_LIMITS) +
+  scale_y_continuous(labels = function(x) format(10^x, scientific = TRUE),
+                     breaks = c(2, 3, 4, 5, 6, 7, 8),
+                     limits = PLOT_LIMITS)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_median_copy_numbers %>% 
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+
+```
+
+# Fit turnover
+
+Fit using a linear fit to ln(HEAVY/LIGHT+1) vs time.      
+Set intercept to 0.
+Fit separately for each replicate
+
+```{r}
+
+MIN_N_TIMEPOINTS <- 2
+
+## Fit proteins
+df_fit_proteins <- df %>%
+  dplyr::select(gene_name, protein_id, Replicate, Sample, time, rel_fc_HEAVY) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  group_by(gene_name, protein_id, Replicate, Sample) %>%
+  add_count() %>% 
+  filter(n >= MIN_N_TIMEPOINTS) %>%
+  nest() %>%
+  mutate(fit = map(data, ~ lm(log(rel_fc_HEAVY+1) ~ time + 0, data = .)),
+         rss = map_dbl(fit, ~deviance(.x)),
+         slope = map_dbl(fit, ~coef(.x)["time"])
+         ) %>% 
+  ungroup() %>% 
+  dplyr::select(-fit)
+
+
+```
+
+Number of gene names with fitted turnover
+
+```{r}
+
+print(paste0("Turnover estimates (before correction) could be fitted to ",  n_distinct(df_fit_proteins$gene_name), " gene names."))
+
+```
+
+## Estimate cell cycle time from data
+HOX! Here, the lowest 1% of slopes is taken as a proxy for the cell cycle time
+
+```{r, message = F, warning = F}
+
+df_tcc_estimated <- df_fit_proteins %>% 
+  group_by(Replicate, Sample) %>% 
+  filter(slope > 0) %>% 
+  summarise(estimated_tcc = log(2)/quantile(slope, probs = 0.01)) %>% 
+  ungroup()
+
+## Calculate half-lives
+df_fit_proteins <- df_fit_proteins %>%
+  ## Add tcc
+  left_join(df_tcc_estimated,
+            by = c("Sample", "Replicate")) %>% 
+  mutate(kdeg = slope - log(2)/estimated_tcc,
+         Thalf = log(2) / kdeg)
+
+```
+
+### Cell cycle estimate
+
+Estimated from lowest 1% of protein turnover
+
+```{r}
+
+FILENAME <- "FigureS3a_CellCycleEstimate"
+FIG_WIDTH <- 2.5
+FIG_HEIGHT <- 3
+
+ggplot(df_tcc_estimated,
+         aes(x=Sample,
+             fill = Sample)) +
+  geom_col(data = . %>% 
+             group_by(Sample) %>% 
+             summarise(avg_tcc = mean(estimated_tcc)),
+           aes(y = avg_tcc),
+           alpha = 1,
+           color = "black",
+           linewidth = 0.3) +
+  geom_errorbar(data = . %>% 
+             group_by(Sample) %>% 
+             summarise(avg_tcc = mean(estimated_tcc),
+                       sd_tcc = sd(estimated_tcc)),
+             aes(ymin = avg_tcc - sd_tcc,
+                 ymax = avg_tcc + sd_tcc),
+             width = 0.25) +
+  geom_jitter(aes(y = estimated_tcc),
+             fill = "white",
+             shape = 21,
+             size =3,
+             width = 0.25) +
+  scale_fill_manual(values = COLOR_VECTOR_SAMPLE) +
+  theme_HH_paper +
+  theme(legend.position = "none") +
+  ylab("cell cycle estimate (h)") +
+  xlab("")
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+## Write out median values
+write.xlsx2(df_tcc_estimated %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = "Figure_S1_Cell_cycle_estimates.xlsx",
+         sheet = "data",
+         row.names = F)
+
+```
+
+## Reproducibility across replicates
+
+Collapse to gene name.
+
+```{r}
+
+FILENAME <- "Reproducibility_of_slopes_across_replicates"
+FIG_WIDTH <- 4
+FIG_HEIGHT <- 4
+
+df_plot <- df_fit_proteins %>% 
+  filter(Sample != "mouse_2DG") %>% 
+  group_by(gene_name, Replicate, Sample) %>% 
+  summarise(slope = median(slope)) %>% 
+  ungroup()
+
+df_plot <- df_plot %>% 
+  filter(Replicate == "Rep1") %>% 
+  dplyr::select(gene_name, Sample, Rep1 = slope) %>% 
+  left_join(
+    df_plot %>% 
+      filter(Replicate %in% c("Rep2", "Rep3")) %>% 
+      dplyr::select(gene_name, Sample, Replicate, Rep2Rep3 = slope)
+  )
+
+PLOT_LIMITS <- c(-7.5, 0)
+
+ggplot(df_plot %>% 
+         filter(!is.na(Replicate)),
+       aes(x = log2(Rep1),
+           y = log2(Rep2Rep3))) +
+    geom_pointdensity(size = 0.5) +
+  scale_color_viridis() +
+  geom_abline(linewidth = 0.2) +
+  coord_fixed(xlim = PLOT_LIMITS,
+              ylim = PLOT_LIMITS) +
+  xlab(label = bquote(~ "Rep1, log" ["2"] * "(k" ["deg"] * ")")) +
+  ylab(label = bquote(~ "log" ["2"] * "(k" ["deg"] * ")")) +
+  theme_HH_scatter_paper +
+  guides(color = FALSE) +
+  stat_cor(method = "pearson", 
+           aes(label = ..r.label..),
+           label.x = -6.5, label.y = -0.5,
+           size = 3) +
+  ggtitle(bquote(~ "turnover slope, uncorrected k" ["deg"])) +
+  facet_grid(cols = vars(Sample),
+             rows = vars(Replicate))
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+## Write out median values
+write.xlsx2(df_plot %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "data",
+         row.names = F)
+
+```
+
+```{r}
+
+FILENAME <- "FigureS1b_Reproducibility_of_Thalf_across_replicates"
+FIG_WIDTH <- 4
+FIG_HEIGHT <- 4
+
+df_plot <- df_fit_proteins %>% 
+  filter(Sample != "mouse_2DG") %>% 
+  group_by(gene_name, Replicate, Sample) %>% 
+  summarise(Thalf = median(Thalf)) %>% 
+  ungroup()
+
+df_plot <- df_plot %>% 
+  filter(Replicate == "Rep1") %>% 
+  dplyr::select(gene_name, Sample, Rep1 = Thalf) %>% 
+  left_join(
+    df_plot %>% 
+      filter(Replicate %in% c("Rep2", "Rep3")) %>% 
+      dplyr::select(gene_name, Sample, Replicate, Rep2Rep3 = Thalf)
+  )
+
+PLOT_LIMITS <- c(0, 4)
+
+ggplot(df_plot %>% 
+         filter(!is.na(Replicate)),
+       aes(x = log10(Rep1),
+           y = log10(Rep2Rep3))) +
+    geom_pointdensity(size = 0.5) +
+  scale_color_viridis() +
+  geom_abline(linewidth = 0.2) +
+  coord_fixed(xlim = PLOT_LIMITS,
+              ylim = PLOT_LIMITS) +
+  xlab(label = bquote(~ "Rep1, log" ["10"] * "(T" ["1/2"] * ", h)")) +
+  ylab(label = bquote(~ "log" ["10"] * "(T" ["1/2"] * ", h)")) +
+  theme_HH_scatter_paper +
+  guides(color = FALSE) +
+  stat_cor(method = "pearson",
+           aes(label = ..r.label..),
+           label.x = 0.5, label.y = 3.5,
+           size = 3) +
+  ggtitle(bquote(~ "turnover, corrected T" ["1/2"] * " (h)")) +
+  facet_grid(cols = vars(Sample),
+             rows = vars(Replicate))
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+## Write out median values
+write.xlsx2(df_plot %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "data",
+         row.names = F)
+
+```
+
+## Thalf scatter plots
+
+Use median across replicates
+
+```{r, message = F, warning = F}
+
+df_fit_proteins_medians <-
+  df_fit_proteins %>%
+  dplyr::select(gene_name, Sample, kdeg, Replicate) %>% 
+  distinct() %>% 
+  group_by(gene_name, Sample) %>% 
+  summarise(median_kdeg = median(kdeg, na.rm = T),
+            median_Thalf = log(2)/median_kdeg,
+            found_in_replicates = n_distinct(Replicate)) %>% 
+  ## Filter to only include cases with a minimum of two replicates for human and mouse
+  filter(Sample == "mouse" & found_in_replicates > 1 |
+           Sample == "human" & found_in_replicates > 1 |
+           Sample == "mouse_2DG") %>% 
+  mutate(Sample = factor(Sample,
+                         levels = c("mouse",
+                                    "human",
+                                    "mouse_2DG")))
+
+print(paste0("Turnover estimates in >=2 replicates (mouse and human) or 1 replicate (mouse DG) in total for ",  n_distinct(df_fit_proteins_medians$gene_name), " gene names."))
+
+```
+
+mouse v human: Only show proteins detected in at least 2 replicates.    
+mouse 2DG v others: Show also cases with a single replicate
+
+```{r, message = F, warning = F}
+
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 3
+
+PLOT_LIMITS <- c(0, 3.5)
+
+FILENAME <- "Figure1c_Thalf_human_vs_mouse"
+
+df_plot <- df_fit_proteins_medians %>% 
+  filter(Sample == "human" | Sample == "mouse") %>% 
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+  mutate(median_Thalf = log10(median_Thalf)) %>% 
+         distinct() %>% 
+         pivot_wider(names_from = Sample,
+                     values_from = median_Thalf) %>% 
+  na.omit()
+
+ggplot(df_plot,
+       aes(x = human,
+           y = mouse)) +
+  geom_pointdensity(size = 0.5) +
+  scale_color_viridis() +
+  geom_abline(linewidth = 0.2) +
+  coord_fixed(xlim = PLOT_LIMITS,
+              ylim = PLOT_LIMITS) +
+  xlab(label = bquote(~ "human T" ["1/2"] * ", (h)")) +
+  ylab(label = bquote(~ "mouse T" ["1/2"] * ", (h)")) +
+  theme_HH_scatter_paper +
+  guides(color = FALSE) +
+    geom_text(data = tibble(
+    x = 2.5,
+    y = 0.5),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name)))) +
+  scale_x_continuous(labels = function(x) 10^x,
+                     breaks = c(0, 1, 2, 3),
+                     limits = PLOT_LIMITS) +
+  scale_y_continuous(labels = function(x) 10^x,
+                     breaks = c(0, 1, 2, 3),
+                     limits = PLOT_LIMITS)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+
+#############
+
+
+FILENAME <- "Figure3f_Thalf_mouse_vs_2DG"
+
+df_plot <- df_fit_proteins_medians %>% 
+  filter(Sample == "mouse_2DG" |
+           Sample == "mouse") %>% 
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+  mutate(median_Thalf = log10(median_Thalf)) %>% 
+         distinct() %>% 
+         pivot_wider(names_from = Sample,
+                     values_from = median_Thalf) %>% 
+  na.omit()
+
+ggplot(df_plot,
+       aes(x = mouse_2DG,
+           y = mouse)) +
+  geom_pointdensity(size = 0.5) +
+  scale_color_viridis() +
+  geom_abline(linewidth = 0.2) +
+  coord_fixed(xlim = PLOT_LIMITS,
+              ylim = PLOT_LIMITS) +
+  xlab(label = bquote(~ "mouse - 2DG T" ["1/2"] * ", (h)")) +
+  ylab(label = bquote(~ "mouse T" ["1/2"] * ", (h)")) +
+  theme_HH_scatter_paper +
+  guides(color = FALSE) +
+  scale_x_continuous(labels = function(x) 10^x,
+                     breaks = c(0, 1, 2, 3),
+                     limits = PLOT_LIMITS) +
+  scale_y_continuous(labels = function(x) 10^x,
+                     breaks = c(0, 1, 2, 3),
+                     limits = PLOT_LIMITS) +
+  geom_text(data = tibble(
+    x = 2.5,
+    y = 0.5),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name))))
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+###############
+
+FILENAME <- "Figure4a_Thalf_human_vs_2DG"
+
+df_plot <- df_fit_proteins_medians %>% 
+  filter(Sample == "mouse_2DG" |
+           Sample == "human") %>% 
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+  mutate(median_Thalf = log10(median_Thalf)) %>% 
+         distinct() %>% 
+         pivot_wider(names_from = Sample,
+                     values_from = median_Thalf) %>% 
+  na.omit()
+
+ggplot(df_plot,
+       aes(x = human,
+           y = mouse_2DG)) +
+  geom_pointdensity(size = 0.5) +
+  scale_color_viridis() +
+  geom_abline(linewidth = 0.2) +
+  coord_fixed(xlim = PLOT_LIMITS,
+              ylim = PLOT_LIMITS) +
+   xlab(label = bquote(~ "human T" ["1/2"] * ", (h)")) +
+  ylab(label = bquote(~ "mouse - 2DG T" ["1/2"] * ", (h)")) +
+  theme_HH_scatter_paper +
+  guides(color = FALSE) +
+  scale_x_continuous(labels = function(x) 10^x,
+                     breaks = c(0, 1, 2, 3),
+                     limits = PLOT_LIMITS) +
+  scale_y_continuous(labels = function(x) 10^x,
+                     breaks = c(0, 1, 2, 3),
+                     limits = PLOT_LIMITS) +
+  geom_text(data = tibble(
+    x = 2.5,
+    y = 0.5),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name))))
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           ungroup() %>%
+           as.data.frame(),
+         file = paste0(FILENAME, "_", VERSION, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+```
+
+## Violin plots of Thalf distributions
+
+```{r}
+
+FIG_WIDTH <- 1.5
+FIG_HEIGHT <- 3
+
+PLOT_LIMITS <- c(-0.75, 4.1)
+
+FILENAME <- "Figure1b_Thalf_violin_human_mouse"
+
+ggplot(df_fit_proteins_medians %>% 
+         filter(Sample == "human" | Sample == "mouse") %>% 
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+         distinct(),
+       aes(x = Sample,
+           y = log10(median_Thalf),
+           fill = Sample,
+           color = Sample)) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_violin(linewidth = 0.3,
+              alpha = 0.5) +
+  geom_boxplot(lwd = LINEWIDTH,
+               width=0.15,
+               outlier.size = OUTLIER_SIZE) +
+  stat_summary(geom = "crossbar", width=0.13, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  xlab("") +
+  scale_y_continuous(labels = function(x) 10^x,
+                     breaks = c(log10(1), log10(2), log10(5), log10(10), log10(20), log10(50), log10(100), log10(200), log10(500),  log10(1000)),
+                     limits = PLOT_LIMITS) +
+  ylab(bquote(~ "T" [1/2] * "(h)")) +
+  stat_summary(fun.data = function(x){
+    data.frame(y=max(x)+0.1,
+               label = length(x))
+  }, geom="text", color = "black",
+  size = PLOT_TEXT_SIZE) +
+  theme_HH_paper +
+  scale_fill_manual(values = COLOR_VECTOR_SAMPLE) +
+  scale_color_manual(values = COLOR_VECTOR_SAMPLE) +
+  theme(legend.position = "none")
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+## Write out median values
+write.xlsx2(df_fit_proteins_medians %>% 
+         filter(Sample == "human" | Sample == "mouse") %>% 
+         dplyr::select(gene_name, Sample, median_kdeg_over_replicates = median_kdeg, median_Thalf_over_replicates = median_Thalf) %>% 
+         distinct() %>% 
+           ungroup() %>%
+           mutate(log10_median_Thalf_over_replicates = log10(median_Thalf_over_replicates)) %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_fit_proteins_medians %>% 
+         filter(Sample == "human" | Sample == "mouse") %>% 
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+         distinct() %>% 
+           group_by(Sample) %>% 
+           summarise(median_Thalf = median(median_Thalf),
+                     log10_median_Thalf = log2(median_Thalf)) %>%
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "median_Thalfs",
+         row.names = F,
+         append = TRUE)
+
+###################
+## Figure 4B
+FILENAME <- "Figure4b_Thalf_violin_All"
+FIG_WIDTH <- 1.75
+
+ggplot(df_fit_proteins_medians %>%
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+         distinct() %>% 
+         mutate(Sample = factor(gsub("_", "\n", Sample),
+                                levels = c("mouse", "human", "mouse\n2DG"))),
+       aes(x = Sample,
+           y = log10(median_Thalf),
+           color = Sample,
+           fill = Sample)) +
+  geom_violin(linewidth = 0.3,
+              alpha = 0.5) +
+  geom_boxplot(lwd = LINEWIDTH,
+               width=0.15,
+               outlier.size = OUTLIER_SIZE) +
+  stat_summary(geom = "crossbar", width=0.13, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  xlab("") +
+  scale_y_continuous(labels = function(x) 10^x,
+                     breaks = c(log10(1), log10(2), log10(5), log10(10), log10(20), log10(50), log10(100), log10(200), log10(500),  log10(1000)),
+                     limits = PLOT_LIMITS) +
+  ylab(bquote(~ "T" [1/2] * "(h)")) +
+  stat_summary(fun.data = function(x){
+    data.frame(y=max(x)+0.1,
+               label = length(x))
+  }, geom="text", color = "black",
+  size = PLOT_TEXT_SIZE) +
+  theme_HH_paper +
+  scale_fill_manual(values = COLOR_VECTOR_SAMPLE) +
+  scale_color_manual(values = COLOR_VECTOR_SAMPLE) +
+  theme(legend.position = "none")
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+## Write out median values
+write.xlsx2(df_fit_proteins_medians %>% 
+         dplyr::select(gene_name, Sample, median_kdeg_over_replicates = median_kdeg, median_Thalf_over_replicates = median_Thalf) %>% 
+         distinct() %>% 
+           ungroup() %>%
+           mutate(log10_median_Thalf_over_replicates = log10(median_Thalf_over_replicates)) %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_fit_proteins_medians %>% 
+         dplyr::select(gene_name, Sample, median_Thalf) %>% 
+         distinct() %>% 
+           group_by(Sample) %>% 
+           summarise(median_Thalf = median(median_Thalf),
+                     log10_median_Thalf = log2(median_Thalf)) %>%
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "median_Thalfs",
+         row.names = F,
+         append = TRUE)
+```
+
+# Compare turnover using competing fits and F-statistic
+## human vs mouse
+
+For finding differentially turning over proteins.    
+Adjust for cell cycle
+
+```{r}
+
+## Adjust for cell cycle
+df <- df %>% 
+  left_join(df_tcc_estimated,
+            by = c("Sample", "Replicate")) %>% 
+  mutate(new2old_tcc_adjusted = log(rel_fc_HEAVY + 1) - log(2)/estimated_tcc*time)
+
+```
+
+human vs mouse
+
+```{r, message = F, warning = F}
+
+## Threshhold for, how many datapoints should be available per sample
+MIN_N_DATAPOINTS <- 3
+MIN_TOTAL_DATAPOINTS <- 8
+## Fix intercept?
+FIX_INTERCEPT = TRUE
+FIXED_INTERCEPT = 0
+
+ADJ_P_CUTOFF <- 0.001
+
+## bin based on number of measured datapoints
+NUMBER_OF_BINS <- 4
+
+set.seed(123)
+
+df_temp <- df %>% 
+  dplyr::select(gene_name, time, Replicate, Sample, new2old_tcc_adjusted) %>% 
+  unique() %>% 
+  filter(Sample == "human" |
+           Sample == "mouse") %>% 
+  ## Check, how many datapoints available and filter
+  group_by(gene_name, Sample) %>% 
+  add_count(name = "datapoints_per_sample") %>%
+  filter(datapoints_per_sample >= MIN_N_DATAPOINTS) %>%
+  ## Then filter for cases, which have been found in more than 1 sample
+  group_by(gene_name) %>%
+  nest() %>% 
+  mutate(detected_in_samples = map_int(data,
+                             ~ .x %>% pull(Sample) %>% n_distinct)) %>%
+  unnest(data) %>% 
+  filter(detected_in_samples > 1) %>%
+  ## Count number of datapoints in total
+  group_by(gene_name) %>% 
+  add_count(name = "datapoints_in_total") %>%
+  filter(datapoints_in_total >= MIN_TOTAL_DATAPOINTS) %>% 
+  ## Shuffle species assignment to datapoints per protein
+  mutate(Sample_randomized = sample(Sample)) %>% 
+  ungroup()
+
+df_temp <- df_temp[order(df_temp$gene_name),]
+
+
+## Define function to fit competing models
+f_fit_competing_linear_models <- 
+  function(intercept_fixed = FIX_INTERCEPT,
+           fixed_intercept = FIXED_INTERCEPT,
+           fdf,
+           grouping_variable = "^Sample$") {
+    
+    if(intercept_fixed == TRUE) { ## If intercepts are to be fixed
+      ## Define grouping variable
+      colnames(fdf)[grepl(grouping_variable, colnames(fdf))] <- "grouping_variable"
+      
+      ## H0, both samples together
+      H0_output <-
+        fdf %>% 
+          mutate(fixed_intercept = fixed_intercept) %>%
+          group_by(gene_name) %>%
+          nest() %>% 
+          mutate(H0_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time + 0, data = .x, offset = fixed_intercept)),
+                 H0_r2 = map_dbl(H0_model,
+                          ~ summary(.x)$r.squared),
+                 H0_slope = map_dbl(H0_model,
+                                    ~coef(.x)),
+                 H0_rss = map_dbl(H0_model,
+                                  ~ deviance(.x)),
+                 H0_intercept = fixed_intercept,
+                 H0_df.residual = map_int(H0_model,
+                                         ~summary.lm(.x)$df[2])) ## These residuals are actually not used, but still extracted for reference
+      
+      ## H1, samples separately
+      H1_output <-
+        fdf %>% 
+          mutate(fixed_intercept = fixed_intercept) %>%
+          group_by(gene_name, grouping_variable) %>%
+          nest() %>% 
+          mutate(H1_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time + 0, data = .x, offset = fixed_intercept)),
+                 H1_r2 = map_dbl(H1_model,
+                          ~ summary(.x)$r.squared),
+                 H1_slope = map_dbl(H1_model,
+                                    ~coef(.x)),
+                 H1_rss = map_dbl(H1_model,
+                                  ~ deviance(.x)),
+                 H1_intercept = fixed_intercept,
+                 H1_df.residual = map_int(H1_model,
+                                          ~summary.lm(.x)$df[2]))
+      
+    } else {
+      H0_output <-
+        fdf %>%
+          group_by(gene_name) %>%
+          nest() %>% 
+          mutate(H0_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time, data = .x)),
+                 H0_r2 = map_dbl(H0_model,
+                          ~ summary(.x)$r.squared),
+                 H0_slope = map_dbl(H0_model,
+                                    ~coef(.x)["time"]),
+                 H0_rss = map_dbl(H0_model,
+                                  ~ deviance(.x)),
+                 H0_intercept = map_dbl(H0_model,
+                                    ~coef(.x)["(Intercept)"]),
+                 H0_df.residual = map_int(H0_model,
+                                         ~summary.lm(.x)$df[2]))
+      
+      ## H1, fitting separately
+      H1_output <-
+        fdf %>%
+          group_by(gene_name, grouping_variable) %>%
+          nest() %>% 
+          mutate(H1_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time, data = .x)),
+                 H1_r2 = map_dbl(H1_model,
+                          ~ summary(.x)$r.squared),
+                 H1_slope = map_dbl(H1_model,
+                                    ~coef(.x)["time"]),
+                 H1_rss = map_dbl(H1_model,
+                                  ~ deviance(.x)),
+                 H1_intercept = map_dbl(H1_model,
+                                    ~coef(.x)["(Intercept)"]),
+                 H1_df.residual = map_int(H1_model,
+                                          ~summary.lm(.x)$df[2]))
+    }
+  
+  ## Extract and combine outputs
+  fdf_combined_out <-
+    left_join(H1_output %>%
+                dplyr::select(gene_name, H1_rss, H1_slope, H1_intercept, H1_df.residual, grouping_variable) %>% 
+                group_by(gene_name) %>% 
+                mutate(H1_rss_sum = sum(H1_rss),
+                       H1_df.residual_sum = sum(H1_df.residual),
+                       Thalf_H1 = log(2)/H1_slope),
+              H0_output %>%
+                dplyr::select(gene_name, H0_rss, H0_slope, H0_intercept, H0_df.residual),
+              by = "gene_name")
+  
+  return(fdf_combined_out)
+}
+
+
+model_output_randomized <-
+  f_fit_competing_linear_models(intercept_fixed = FIX_INTERCEPT,
+                                fixed_intercept = FIXED_INTERCEPT,
+                                fdf = df_temp,
+                                grouping_variable = "^Sample_randomized$")
+
+plots <- list()
+
+## RSS from H0 and H1 from randomized data should be practically identical
+plots[[length(plots)+1]] <-
+  ggplot(model_output_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum) %>% 
+           unique(),
+         aes(x = H0_rss,
+             y = H1_rss_sum)) +
+    geom_point() +
+    geom_abline(linetype = "dashed") +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized")
+
+## Also slopes should be practically identical
+plots[[length(plots)+1]] <-
+  ggplot(model_output_randomized,
+         aes(x = H0_slope,
+             y = H1_slope)) +
+    geom_point() +
+    geom_abline(linetype = "dashed") +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized")
+
+## Make function to estimate dof's
+f_estimate_dof <- function(fdf) {
+  ## Will follow the logic outlined in Childs et al, Mol Cell Prot 2019
+  RSS_0 <- fdf$H0_rss
+  RSS_1 <- fdf$H1_rss_sum
+  
+  ## Estimate scale paremeter sigma^2
+  s2 <- 1/2 * mad(RSS_0 - RSS_1)^2 / median(RSS_0 - RSS_1)
+  
+  ## Find d1 and d2
+  RSS_diff_per_s2 <- (RSS_0 - RSS_1) / s2
+  
+  ## Remove cases, which are negative or zero
+  RSS_diff_per_s2 <- RSS_diff_per_s2[!(is.na(RSS_diff_per_s2) | RSS_diff_per_s2 <= 0)]
+  
+  ## Fit to chi-square distribution
+  d1 <- fitdistr(x = RSS_diff_per_s2,
+                 densfun = "chi-squared",
+                 start = list(df = 1),
+                 method = "Brent",
+                 lower = 0,
+                 upper = length(RSS_diff_per_s2))
+  
+  ## Extract estimate for degree of freedom
+  d1 <- d1[["estimate"]]
+  
+  
+  ## And for the second degree of freedom
+  RSS1_per_s2 <- RSS_1 / s2
+  
+  ## Remove cases, which are negative or zero
+  RSS1_per_s2 <- RSS1_per_s2[!(is.na(RSS1_per_s2) | RSS1_per_s2 <= 0)]
+  
+  ## Fit to chi-square distribution
+  d2 <- fitdistr(x = RSS1_per_s2,
+                 densfun = "chi-squared",
+                 start = list(df = 1),
+                 method = "Brent",
+                 lower = 0,
+                 upper = length(RSS1_per_s2))
+  
+  ## Extract estimate for degree of freedom
+  d2 <- d2[["estimate"]]
+  
+  return(data.frame(d1 = d1,
+                    d2 = d2))
+}
+
+
+
+## Bin data based on N_datapoints to estimate separate degrees of freedom for each bin
+df_bins <- df_temp %>%
+  dplyr::select(gene_name, datapoints_per_sample, Sample_randomized) %>% 
+  unique() %>% 
+  group_by(gene_name) %>% 
+  summarise(mean_n_datapoints_per_sample = mean(datapoints_per_sample)) %>% 
+  mutate(bin = cut(mean_n_datapoints_per_sample, NUMBER_OF_BINS) %>% as.numeric()) %>% 
+  ungroup()
+
+dofs_from_randomized <- model_output_randomized %>%
+  dplyr::select(gene_name, H0_rss, H1_rss_sum, H0_slope) %>% 
+  unique() %>% 
+  left_join(df_bins,
+            by = "gene_name")
+
+## In randomized data difference should follow a random distribution. In practice, a chi-square distribution of some order (since adding differing numbers of RSS values to each other?)
+plots[[length(plots)+1]] <-
+  ggplot(dofs_from_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum, bin) %>% 
+           unique(),
+         aes(x = H0_rss - H1_rss_sum,
+             y = after_stat(count))) +
+    geom_histogram(bins = 200) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized, distribution for d1") +
+    facet_wrap(~bin, nrow = 1)
+
+plots[[length(plots)+1]] <-
+  ggplot(dofs_from_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum, bin) %>% 
+           unique(),
+         aes(x = H1_rss_sum,
+             y = after_stat(count))) +
+    geom_histogram(bins = 200) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized, distribution for d2") +
+    facet_wrap(~bin, nrow = 1)
+
+#### Estimating degrees of freedom ####
+## To calculate the F-statistic, the degrees of freedom need to be estimated, due to heteroscedasticity of the data
+plots[[length(plots)+1]] <-
+  ggplot(dofs_from_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum, H0_slope, bin) %>% 
+           unique(),
+         aes(x = H0_slope,
+             y = H0_rss-H1_rss_sum)) +
+    geom_point(alpha = 0.3) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized") +
+    facet_wrap(~bin, nrow = 1)
+
+## Find dof-estimates for the bins
+dofs_from_randomized <- dofs_from_randomized %>%
+  dplyr::select(gene_name, H0_rss, H1_rss_sum, bin) %>% 
+  unique() %>% 
+  group_by(bin) %>% 
+  nest() %>% 
+  mutate(dof = map(.x = data,
+                   .f = f_estimate_dof)) %>%
+  unnest(cols = c(dof, data)) %>% 
+  ungroup() %>% 
+  dplyr::select(gene_name, d1, d2, bin)
+
+## With these, go for the F-statistic calculation in the un-randomized, proper data
+## Fit competing models
+model_output_proper <- 
+  f_fit_competing_linear_models(intercept_fixed = FIX_INTERCEPT,
+                                fixed_intercept = FIXED_INTERCEPT,
+                                fdf = df_temp,
+                                grouping_variable = "^Sample$")
+
+## Add in degrees of freedom estimated from the randomized dataset
+df_F_stats_out <- model_output_proper %>%
+  dplyr::select(gene_name, H0_rss, H1_rss_sum, H0_df.residual, H1_df.residual_sum) %>% 
+  unique() %>% 
+  ungroup() %>% 
+  left_join(dofs_from_randomized,
+            by = "gene_name") %>% 
+    ## Calculate F-statistic
+  mutate(F_statistic = d2/d1 * (H0_rss - H1_rss_sum) / H1_rss_sum) %>% 
+    ## Calculate P_value from F-statistic using the estimated degrees of freedom
+  mutate(P_value = 1 - pf(F_statistic,
+                    df1 = d1,
+                    df2 = d2),
+          ## Adjust P_value for multiple testing
+         Adj_P_value = p.adjust(P_value,
+                          method = "BH")) %>%
+    ## Add in info on number of measured datapoints
+  left_join(df_bins %>% 
+              dplyr::select(gene_name, mean_n_datapoints_per_sample),
+            by = "gene_name")
+
+
+
+#### ---- Plots for checking, etc. ---  ####
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = F_statistic,
+             y = after_stat(count))) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_histogram(bins = 1000)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = log10(F_statistic),
+             y = after_stat(count))) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_histogram(bins = 200)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = P_value,
+             y = after_stat(count))) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_histogram(bins = 1000)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = P_value,
+             y = mean_n_datapoints_per_sample)) +
+    geom_point() +
+    ggtitle("Mean number of datapoints per sample") +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent"))
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = log10(H0_rss - H1_rss_sum),
+             y = -log10(P_value),
+             color = factor(bin))) +
+    geom_point() +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Bins with number of datapoints per sample")
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = log10(P_value),
+             y = log10(Adj_P_value),
+             color = factor(bin))) +
+    geom_point() +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_abline(linetype = "dashed")
+
+## Example fits for representative purposes
+plots[[length(plots)+1]] <-
+  ggplot(df_temp %>% 
+           filter(gene_name == "ARF4" | gene_name == "PSMD13" | gene_name == "ALDOA"),
+         aes(x = time,
+             y = new2old_tcc_adjusted,
+             color = Sample)) +
+    geom_point(size = 3) +
+    geom_smooth(method = "lm",
+                formula = y ~ x+0,
+                se = FALSE) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent"),
+          axis.text=element_text(size=10)) +
+    ggtitle("H1") +
+    scale_color_manual(values = COLOR_VECTOR_SAMPLE) +
+    facet_wrap(~gene_name) +
+  theme(panel.spacing = unit(2, "lines"))
+
+plots[[length(plots)+1]] <-
+  ggplot(df_temp %>% 
+           filter(gene_name == "ARF4" | gene_name == "PSMD13" | gene_name == "ALDOA"),
+         aes(x = time,
+             y = new2old_tcc_adjusted)) +
+    geom_point(size = 3) +
+    geom_smooth(method = "lm",
+                formula = y ~ x+0,
+                se = FALSE) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent"),
+          axis.text=element_text(size=10)) +
+    ggtitle("H0") +
+    facet_wrap(~gene_name) +
+  theme(panel.spacing = unit(2, "lines"))
+
+ggexport(ggarrange(plotlist = plots, nrow = 1, ncol = 1, widths = 12),
+         filename = paste0("F-statistics_competing_fits_human_v_mouse_", VERSION, ".pdf"),
+         height = 4, width = 8)
+
+rm(df_bins, df_temp, plots, dofs_from_randomized, model_output_proper, model_output_randomized)
+```
+
+
+```{r}
+## Add in information, whether slower or faster
+df_F_stats_human_v_mouse <-
+  df_fit_proteins_medians %>% 
+  dplyr::select(-c(found_in_replicates, median_Thalf)) %>% 
+  ## Remove negative kdegs
+  filter(median_kdeg > 0) %>% 
+  pivot_wider(names_from = Sample,
+              values_from = median_kdeg) %>% 
+  dplyr::select(gene_name, mouse, human) %>% 
+  mutate(human_vs_mouse = human - mouse) %>% 
+  left_join(df_F_stats_out %>% 
+              dplyr::select(gene_name, H0_rss, H1_rss_sum, F_statistic, Adj_P_value)) %>% 
+  filter(!is.na(F_statistic) &
+           !is.na(human) &
+           !is.na(mouse)) %>% 
+  ungroup() %>% 
+  mutate(Hit_type = case_when(
+    Adj_P_value <= ADJ_P_CUTOFF & human_vs_mouse > 0 ~ "faster in human",
+    Adj_P_value <= ADJ_P_CUTOFF & human_vs_mouse < 0 ~ "slower in human",
+    T ~ "no difference"), 
+    Hit_type = factor(Hit_type,
+                      levels = c("no difference",
+                                 "faster in human",
+                                 "slower in human")))
+#rm(df_F_stats_out)
+
+## How many in each category?
+df_F_stats_human_v_mouse %>% 
+  dplyr::select(Hit_type) %>% 
+  table()
+
+```
+
+## Volcano-like plot from F statistics: human v mouse
+
+```{r, message = F, warning = F}
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 4
+
+# PLOT_LIMITS <- c(-14, 0)
+
+FILENAME <- "Figure1d_Volcano_human_mouse"
+
+ggplot(df_F_stats_human_v_mouse,
+       aes(x = sign(human_vs_mouse)*sqrt(H0_rss - H1_rss_sum),
+           y = log2(F_statistic + 1))) +
+  geom_point(shape = 1,
+             size = 0.8,
+             stroke = 0.4,
+             aes(color = Hit_type)) + 
+  scale_color_manual(values = COLOR_HITS) +
+  ylab(bquote(~ "log"["2"]*"(" * italic("F") *  "-statistic + 1)")) +
+  # xlab(bquote(~ "sign(" * Delta * "initial slope)" * sqrt("RSS"[0]*"-"*"RSS"[1]))) +
+  xlab("effect size") +
+  labs(color = "Hit") +
+  theme_HH_scatter_paper +
+  geom_text(data = tibble(
+    x = 0.5,
+    y = 1),
+    aes(x,y, label = paste0("N = ", n_distinct(df_F_stats_human_v_mouse$gene_name)))) + 
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_F_stats_human_v_mouse %>%
+              mutate(effect_size = sign(human_vs_mouse)*sqrt(H0_rss - H1_rss_sum),
+                     y = log2(F_statistic + 1)) %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "Volcano_like",
+         row.names = F)
+
+
+```
+
+## F statistic and abundance - human v mouse
+
+```{r, message = F, warning = F}
+
+df_plot <- df_F_stats_human_v_mouse %>% 
+         mutate(log2_human_vs_mouse_Thalf = log2((log(2)/human)/(log(2)/mouse))) %>% 
+  na.omit() %>% 
+  left_join(
+    df %>% 
+      filter(Sample != "mouse_2DG") %>%
+      group_by(gene_name) %>% 
+      summarise(median_abundance = log10(median(vsn_norm_TotalSignalSum, na.rm = T)))
+  ) %>% 
+  dplyr::select(gene_name, log2_human_vs_mouse_Thalf, Hit_type, median_abundance)
+
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 3
+
+FILENAME <- "Figure1f_MA_plot_human_v_mouse"
+
+ggplot(df_plot,
+       aes(x = median_abundance,
+           y = log2_human_vs_mouse_Thalf)) +
+  geom_pointdensity(size = 0.5) +
+  geom_hline(yintercept = 0,
+             linewidth = 0.2) +
+  scale_color_viridis() +
+  ylab(label = bquote(~ "log" ["2"] * "(half life human / mouse)")) +
+  xlab(label = bquote(~ "log" ["10"] * "(median protein abundance, a.u.)")) +
+  theme_HH_scatter_paper +
+  geom_text(data = tibble(
+    x = 8,
+    y = -4),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name)))) + 
+  guides(color = FALSE)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "MA_plot",
+         row.names = F)
+
+
+
+## Highlight hits from F statistic
+FILENAME <- "FigureS3b_MA_plot_human_v_mouse_with_Hits"
+
+FIG_WIDTH <- 5
+FIG_HEIGHT <- 3
+
+ggplot(df_plot %>% 
+         arrange(Hit_type),
+       aes(x = median_abundance,
+           y = log2_human_vs_mouse_Thalf)) +
+  geom_point(size = 0.5,
+             aes(color = Hit_type)) +
+  geom_hline(yintercept = 0,
+             linewidth = 0.2) +
+  scale_color_manual(values = COLOR_HITS) +
+  ylab(label = bquote(~ "log" ["2"] * "(half life human / mouse)")) +
+  xlab(label = bquote(~ "log" ["10"] * "(median protein abundance, a.u.)")) +
+  theme_HH_scatter_paper +
+  geom_text(data = tibble(
+    x = 8,
+    y = -4),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name)))) +
+  labs(color = "Hit")
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "MA_plot",
+         row.names = F)
+
+```
+
+## mouse 2DG vs mouse
+
+For finding differentially turning over proteins
+
+```{r, message = F, warning = F}
+
+## Threshhold for, how many datapoints should be available per sample
+MIN_N_DATAPOINTS <- 3
+MIN_TOTAL_DATAPOINTS <- 6
+## Fix intercept?
+FIX_INTERCEPT = TRUE
+FIXED_INTERCEPT = 0
+
+ADJ_P_CUTOFF <- 0.001
+
+## bin based on number of measured datapoints
+NUMBER_OF_BINS <- 4
+
+set.seed(123)
+
+df_temp <- df %>% 
+  dplyr::select(gene_name, time, Replicate, Sample, new2old_tcc_adjusted) %>% 
+  unique() %>% 
+  filter(Sample == "mouse_2DG" |
+           Sample == "mouse") %>% 
+  ## Check, how many datapoints available and filter
+  group_by(gene_name, Sample) %>% 
+  add_count(name = "datapoints_per_sample") %>%
+  filter(datapoints_per_sample >= MIN_N_DATAPOINTS) %>%
+  ## Then filter for cases, which have been found in more than 1 sample
+  group_by(gene_name) %>%
+  nest() %>% 
+  mutate(detected_in_samples = map_int(data,
+                             ~ .x %>% pull(Sample) %>% n_distinct)) %>%
+  unnest(data) %>% 
+  filter(detected_in_samples > 1) %>%
+  ## Count number of datapoints in total
+  group_by(gene_name) %>% 
+  add_count(name = "datapoints_in_total") %>%
+  filter(datapoints_in_total >= MIN_TOTAL_DATAPOINTS) %>% 
+  ## Shuffle species assignment to datapoints per protein
+  mutate(Sample_randomized = sample(Sample)) %>% 
+  ungroup()
+
+df_temp <- df_temp[order(df_temp$gene_name),]
+
+
+## Define function to fit competing models
+f_fit_competing_linear_models <- 
+  function(intercept_fixed = FIX_INTERCEPT,
+           fixed_intercept = FIXED_INTERCEPT,
+           fdf,
+           grouping_variable = "^Sample$") {
+    
+    if(intercept_fixed == TRUE) { ## If intercepts are to be fixed
+      ## Define grouping variable
+      colnames(fdf)[grepl(grouping_variable, colnames(fdf))] <- "grouping_variable"
+      
+      ## H0, both samples together
+      H0_output <-
+        fdf %>% 
+          mutate(fixed_intercept = fixed_intercept) %>%
+          group_by(gene_name) %>%
+          nest() %>% 
+          mutate(H0_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time + 0, data = .x, offset = fixed_intercept)),
+                 H0_r2 = map_dbl(H0_model,
+                          ~ summary(.x)$r.squared),
+                 H0_slope = map_dbl(H0_model,
+                                    ~coef(.x)),
+                 H0_rss = map_dbl(H0_model,
+                                  ~ deviance(.x)),
+                 H0_intercept = fixed_intercept,
+                 H0_df.residual = map_int(H0_model,
+                                         ~summary.lm(.x)$df[2])) ## These residuals are actually not used, but still extracted for reference
+      
+      ## H1, samples separately
+      H1_output <-
+        fdf %>% 
+          mutate(fixed_intercept = fixed_intercept) %>%
+          group_by(gene_name, grouping_variable) %>%
+          nest() %>% 
+          mutate(H1_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time + 0, data = .x, offset = fixed_intercept)),
+                 H1_r2 = map_dbl(H1_model,
+                          ~ summary(.x)$r.squared),
+                 H1_slope = map_dbl(H1_model,
+                                    ~coef(.x)),
+                 H1_rss = map_dbl(H1_model,
+                                  ~ deviance(.x)),
+                 H1_intercept = fixed_intercept,
+                 H1_df.residual = map_int(H1_model,
+                                          ~summary.lm(.x)$df[2]))
+      
+    } else {
+      H0_output <-
+        fdf %>%
+          group_by(gene_name) %>%
+          nest() %>% 
+          mutate(H0_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time, data = .x)),
+                 H0_r2 = map_dbl(H0_model,
+                          ~ summary(.x)$r.squared),
+                 H0_slope = map_dbl(H0_model,
+                                    ~coef(.x)["time"]),
+                 H0_rss = map_dbl(H0_model,
+                                  ~ deviance(.x)),
+                 H0_intercept = map_dbl(H0_model,
+                                    ~coef(.x)["(Intercept)"]),
+                 H0_df.residual = map_int(H0_model,
+                                         ~summary.lm(.x)$df[2]))
+      
+      ## H1, fitting separately
+      H1_output <-
+        fdf %>%
+          group_by(gene_name, grouping_variable) %>%
+          nest() %>% 
+          mutate(H1_model = map(data,
+                             ~ lm(new2old_tcc_adjusted ~ time, data = .x)),
+                 H1_r2 = map_dbl(H1_model,
+                          ~ summary(.x)$r.squared),
+                 H1_slope = map_dbl(H1_model,
+                                    ~coef(.x)["time"]),
+                 H1_rss = map_dbl(H1_model,
+                                  ~ deviance(.x)),
+                 H1_intercept = map_dbl(H1_model,
+                                    ~coef(.x)["(Intercept)"]),
+                 H1_df.residual = map_int(H1_model,
+                                          ~summary.lm(.x)$df[2]))
+    }
+  
+  ## Extract and combine outputs
+  fdf_combined_out <-
+    left_join(H1_output %>%
+                dplyr::select(gene_name, H1_rss, H1_slope, H1_intercept, H1_df.residual, grouping_variable) %>% 
+                group_by(gene_name) %>% 
+                mutate(H1_rss_sum = sum(H1_rss),
+                       H1_df.residual_sum = sum(H1_df.residual),
+                       Thalf_H1 = log(2)/H1_slope),
+              H0_output %>%
+                dplyr::select(gene_name, H0_rss, H0_slope, H0_intercept, H0_df.residual),
+              by = "gene_name")
+  
+  return(fdf_combined_out)
+}
+
+
+model_output_randomized <-
+  f_fit_competing_linear_models(intercept_fixed = FIX_INTERCEPT,
+                                fixed_intercept = FIXED_INTERCEPT,
+                                fdf = df_temp,
+                                grouping_variable = "^Sample_randomized$")
+
+plots <- list()
+
+## RSS from H0 and H1 from randomized data should be practically identical
+plots[[length(plots)+1]] <-
+  ggplot(model_output_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum) %>% 
+           unique(),
+         aes(x = H0_rss,
+             y = H1_rss_sum)) +
+    geom_point() +
+    geom_abline(linetype = "dashed") +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized")
+
+## Also slopes should be practically identical
+plots[[length(plots)+1]] <-
+  ggplot(model_output_randomized,
+         aes(x = H0_slope,
+             y = H1_slope)) +
+    geom_point() +
+    geom_abline(linetype = "dashed") +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized")
+
+## Make function to estimate dof's
+f_estimate_dof <- function(fdf) {
+  ## Will follow the logic outlined in Childs et al, Mol Cell Prot 2019
+  RSS_0 <- fdf$H0_rss
+  RSS_1 <- fdf$H1_rss_sum
+  
+  ## Estimate scale paremeter sigma^2
+  s2 <- 1/2 * mad(RSS_0 - RSS_1)^2 / median(RSS_0 - RSS_1)
+  
+  ## Find d1 and d2
+  RSS_diff_per_s2 <- (RSS_0 - RSS_1) / s2
+  
+  ## Remove cases, which are negative or zero
+  RSS_diff_per_s2 <- RSS_diff_per_s2[!(is.na(RSS_diff_per_s2) | RSS_diff_per_s2 <= 0)]
+  
+  ## Fit to chi-square distribution
+  d1 <- fitdistr(x = RSS_diff_per_s2,
+                 densfun = "chi-squared",
+                 start = list(df = 1),
+                 method = "Brent",
+                 lower = 0,
+                 upper = length(RSS_diff_per_s2))
+  
+  ## Extract estimate for degree of freedom
+  d1 <- d1[["estimate"]]
+  
+  
+  ## And for the second degree of freedom
+  RSS1_per_s2 <- RSS_1 / s2
+  
+  ## Remove cases, which are negative or zero
+  RSS1_per_s2 <- RSS1_per_s2[!(is.na(RSS1_per_s2) | RSS1_per_s2 <= 0)]
+  
+  ## Fit to chi-square distribution
+  d2 <- fitdistr(x = RSS1_per_s2,
+                 densfun = "chi-squared",
+                 start = list(df = 1),
+                 method = "Brent",
+                 lower = 0,
+                 upper = length(RSS1_per_s2))
+  
+  ## Extract estimate for degree of freedom
+  d2 <- d2[["estimate"]]
+  
+  return(data.frame(d1 = d1,
+                    d2 = d2))
+}
+
+
+
+## Bin data based on N_datapoints to estimate separate degrees of freedom for each bin
+df_bins <- df_temp %>%
+  dplyr::select(gene_name, datapoints_per_sample, Sample_randomized) %>% 
+  unique() %>% 
+  group_by(gene_name) %>% 
+  summarise(mean_n_datapoints_per_sample = mean(datapoints_per_sample)) %>% 
+  mutate(bin = cut(mean_n_datapoints_per_sample, NUMBER_OF_BINS) %>% as.numeric()) %>% 
+  ungroup()
+
+dofs_from_randomized <- model_output_randomized %>%
+  dplyr::select(gene_name, H0_rss, H1_rss_sum, H0_slope) %>% 
+  unique() %>% 
+  left_join(df_bins,
+            by = "gene_name")
+
+## In randomized data difference should follow a random distribution. In practice, a chi-square distribution of some order (since adding differing numbers of RSS values to each other?)
+plots[[length(plots)+1]] <-
+  ggplot(dofs_from_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum, bin) %>% 
+           unique(),
+         aes(x = H0_rss - H1_rss_sum,
+             y = after_stat(count))) +
+    geom_histogram(bins = 200) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized, distribution for d1") +
+    facet_wrap(~bin, nrow = 1)
+
+plots[[length(plots)+1]] <-
+  ggplot(dofs_from_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum, bin) %>% 
+           unique(),
+         aes(x = H1_rss_sum,
+             y = after_stat(count))) +
+    geom_histogram(bins = 200) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized, distribution for d2") +
+    facet_wrap(~bin, nrow = 1)
+
+#### Estimating degrees of freedom ####
+## To calculate the F-statistic, the degrees of freedom need to be estimated, due to heteroscedasticity of the data
+plots[[length(plots)+1]] <-
+  ggplot(dofs_from_randomized %>% 
+           dplyr::select(gene_name, H0_rss, H1_rss_sum, H0_slope, bin) %>% 
+           unique(),
+         aes(x = H0_slope,
+             y = H0_rss-H1_rss_sum)) +
+    geom_point(alpha = 0.3) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Samples randomized") +
+    facet_wrap(~bin, nrow = 1)
+
+## Find dof-estimates for the bins
+dofs_from_randomized <- dofs_from_randomized %>%
+  dplyr::select(gene_name, H0_rss, H1_rss_sum, bin) %>% 
+  unique() %>% 
+  group_by(bin) %>% 
+  nest() %>% 
+  mutate(dof = map(.x = data,
+                   .f = f_estimate_dof)) %>%
+  unnest(cols = c(dof, data)) %>% 
+  ungroup() %>% 
+  dplyr::select(gene_name, d1, d2, bin)
+
+## With these, go for the F-statistic calculation in the un-randomized, proper data
+## Fit competing models
+model_output_proper <- 
+  f_fit_competing_linear_models(intercept_fixed = FIX_INTERCEPT,
+                                fixed_intercept = FIXED_INTERCEPT,
+                                fdf = df_temp,
+                                grouping_variable = "^Sample$")
+
+## Add in degrees of freedom estimated from the randomized dataset
+df_F_stats_out <- model_output_proper %>%
+  dplyr::select(gene_name, H0_rss, H1_rss_sum, H0_df.residual, H1_df.residual_sum) %>% 
+  unique() %>% 
+  ungroup() %>% 
+  left_join(dofs_from_randomized,
+            by = "gene_name") %>% 
+    ## Calculate F-statistic
+  mutate(F_statistic = d2/d1 * (H0_rss - H1_rss_sum) / H1_rss_sum) %>% 
+    ## Calculate P_value from F-statistic using the estimated degrees of freedom
+  mutate(P_value = 1 - pf(F_statistic,
+                    df1 = d1,
+                    df2 = d2),
+          ## Adjust P_value for multiple testing
+         Adj_P_value = p.adjust(P_value,
+                          method = "BH")) %>%
+    ## Add in info on number of measured datapoints
+  left_join(df_bins %>% 
+              dplyr::select(gene_name, mean_n_datapoints_per_sample),
+            by = "gene_name")
+
+
+
+#### ---- Plots for checking, etc. ---  ####
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = F_statistic,
+             y = after_stat(count))) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_histogram(bins = 1000)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = log10(F_statistic),
+             y = after_stat(count))) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_histogram(bins = 200)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = P_value,
+             y = after_stat(count))) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_histogram(bins = 1000)
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = P_value,
+             y = mean_n_datapoints_per_sample)) +
+    geom_point() +
+    ggtitle("Mean number of datapoints per sample") +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent"))
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = log10(H0_rss - H1_rss_sum),
+             y = -log10(P_value),
+             color = factor(bin))) +
+    geom_point() +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    ggtitle("Bins with number of datapoints per sample")
+
+plots[[length(plots)+1]] <-
+  ggplot(df_F_stats_out,
+         aes(x = log10(P_value),
+             y = log10(Adj_P_value),
+             color = factor(bin))) +
+    geom_point() +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent")) +
+    geom_abline(linetype = "dashed")
+
+## Example fits for representative purposes
+plots[[length(plots)+1]] <-
+  ggplot(df_temp %>% 
+           filter(gene_name == "ARF4" | gene_name == "PSMD13" | gene_name == "ALDOA"),
+         aes(x = time,
+             y = new2old_tcc_adjusted,
+             color = Sample)) +
+    geom_point(size = 3) +
+    geom_smooth(method = "lm",
+                formula = y ~ x+0,
+                se = FALSE) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent"),
+          axis.text=element_text(size=10)) +
+    ggtitle("H1") +
+    scale_color_manual(values = COLOR_VECTOR_SAMPLE) +
+    facet_wrap(~gene_name) +
+  theme(panel.spacing = unit(2, "lines"))
+
+plots[[length(plots)+1]] <-
+  ggplot(df_temp %>% 
+           filter(gene_name == "ARF4" | gene_name == "PSMD13" | gene_name == "ALDOA"),
+         aes(x = time,
+             y = new2old_tcc_adjusted)) +
+    geom_point(size = 3) +
+    geom_smooth(method = "lm",
+                formula = y ~ x+0,
+                se = FALSE) +
+    theme_classic() +
+    theme(panel.background = element_rect(fill = "transparent"),
+          axis.text=element_text(size=10)) +
+    ggtitle("H0") +
+    facet_wrap(~gene_name) +
+  theme(panel.spacing = unit(2, "lines"))
+
+ggexport(ggarrange(plotlist = plots, nrow = 1, ncol = 1, widths = 12),
+         filename = paste0("F-statistics_competing_fits_mouse_2DG_v_mouse_", VERSION, ".pdf"))
+
+rm(df_bins, df_temp, plots, dofs_from_randomized, model_output_proper, model_output_randomized)
+```
+
+```{r, message = F, warning = F}
+## Add in information, whether slower or faster
+df_F_stats_mouse2DG_v_mouse <-
+  df_fit_proteins_medians %>% 
+  dplyr::select(-c(found_in_replicates, median_Thalf)) %>% 
+  ## Remove negative kdegs
+  filter(median_kdeg > 0 &
+           Sample != "human") %>% 
+  pivot_wider(names_from = Sample,
+              values_from = median_kdeg) %>% 
+  mutate(mouse2DG_vs_mouse = mouse_2DG - mouse) %>% 
+  left_join(df_F_stats_out %>% 
+              dplyr::select(gene_name, H0_rss, H1_rss_sum, F_statistic, Adj_P_value)) %>% 
+  filter(!is.na(F_statistic)) %>% 
+  ungroup() %>% 
+  mutate(Hit_type = case_when(
+    Adj_P_value <= ADJ_P_CUTOFF & mouse2DG_vs_mouse > 0 ~ "faster in 2DG",
+    Adj_P_value <= ADJ_P_CUTOFF & mouse2DG_vs_mouse < 0 ~ "slower in 2DG",
+    T ~ "no difference"), 
+    Hit_type = factor(Hit_type,
+                      levels = c("no difference",
+                                 "faster in 2DG",
+                                 "slower in 2DG")))
+rm(df_F_stats_out)
+
+## How many in each category?
+df_F_stats_mouse2DG_v_mouse %>% 
+  dplyr::select(Hit_type) %>% 
+  table()
+```
+
+## Volcano-like plot from F statistics: mouse 2DG v mouse
+
+```{r, message = F, warning = F}
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 4
+
+# PLOT_LIMITS <- c(-14, 0)
+
+FILENAME <- "Figure3g_Volcano_mouse2DG_mouse"
+
+ggplot(df_F_stats_mouse2DG_v_mouse,
+       aes(x = sign(mouse2DG_vs_mouse)*sqrt(H0_rss - H1_rss_sum),
+           y = log2(F_statistic + 1))) +
+  geom_point(shape = 1,
+             size = 0.8,
+             stroke = 0.4,
+             aes(color = Hit_type)) + 
+  scale_color_manual(values = COLOR_HITS_2DG) +
+  ylab(bquote(~ "log"["2"]*"(" * italic("F") *  "-statistic + 1)")) +
+  xlab("effect size") +
+  labs(color = "Hit") +
+  theme_HH_scatter_paper +
+  geom_text(data = tibble(
+    x = 0.5,
+    y = 1),
+    aes(x,y, label = paste0("N = ", n_distinct(df_F_stats_mouse2DG_v_mouse$gene_name)))) + 
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_F_stats_mouse2DG_v_mouse %>% 
+           as.data.frame() %>% 
+             mutate(effect_size = sign(mouse2DG_vs_mouse)*sqrt(H0_rss - H1_rss_sum),
+                    log2_Fstatistic_plus_one = log2(F_statistic + 1)),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "Volcano",
+         row.names = F)
+
+```
+
+## F statistic and abundance - mouse 2DG v mouse
+
+```{r, message = F, warning = F}
+
+df_plot <- df_F_stats_mouse2DG_v_mouse %>% 
+         mutate(log2_mouse2DG_vs_mouse_Thalf = log2((log(2)/mouse_2DG)/(log(2)/mouse))) %>% 
+  na.omit() %>% 
+  left_join(
+    df %>% 
+      filter(Sample != "human") %>% 
+      group_by(gene_name) %>% 
+      summarise(median_abundance = log10(median(vsn_norm_TotalSignalSum, na.rm = T)))
+  )
+
+FIG_WIDTH <- 3
+FIG_HEIGHT <- 3
+
+FILENAME <- "FigureS7a_MA_plot_mouse2DG_v_mouse"
+
+ggplot(df_plot,
+       aes(x = median_abundance,
+           y = log2_mouse2DG_vs_mouse_Thalf)) +
+  geom_pointdensity(size = 0.5) +
+  geom_hline(yintercept = 0,
+             linewidth = 0.2) +
+  scale_color_viridis() +
+  ylab(label = bquote(~ "log" ["2"] * "(half life mouse 2DG / mouse)")) +
+  xlab(label = bquote(~ "log" ["10"] * "(median protein abundance, a.u.)")) +
+  theme_HH_scatter_paper +
+  geom_text(data = tibble(
+    x = 8,
+    y = -3),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name)))) + 
+  guides(color = FALSE)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "MA_plot",
+         row.names = F)
+
+## Highlight hits from F statistic
+FILENAME <- "FigureS7b_MA_plot_mouse2DG_v_mouse_with_Hits"
+
+FIG_WIDTH <- 5
+FIG_HEIGHT <- 3
+
+ggplot(df_plot %>% 
+         arrange(Hit_type),
+       aes(x = median_abundance,
+           y = log2_mouse2DG_vs_mouse_Thalf)) +
+  geom_point(size = 0.5,
+             aes(color = Hit_type)) +
+  geom_hline(yintercept = 0,
+             linewidth = 0.2) +
+  scale_color_manual(values = COLOR_HITS_2DG) +
+  ylab(label = bquote(~ "log" ["2"] * "(half life mouse 2DG / mouse)")) +
+  xlab(label = bquote(~ "log" ["10"] * "(median protein abundance, a.u.)")) +
+  theme_HH_scatter_paper +
+  geom_text(data = tibble(
+    x = 8,
+    y = -3),
+    aes(x,y, label = paste0("N = ", n_distinct(df_plot$gene_name)))) +
+  labs(color = "Hit")
+
+ggsave(paste0(FILENAME, "_", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "_", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "MA_plot",
+         row.names = F)
+
+```
+
+# Difference in turnover and percentile turnover (human)
+
+Use human protein turnover to rank proteins.
+
+### Calculate rank order of turnover difference
+
+```{r, message = F, warning = F}
+
+## Take kdeg values from straight up fits
+df_human_vs_mouse_ranks <- df_fit_proteins_medians %>% 
+  filter(median_kdeg > 0 &
+           Sample %in% c("mouse", "human")) %>% 
+  dplyr::select(gene_name, Sample, median_Thalf) %>% 
+  pivot_wider(names_from = Sample,
+              values_from = median_Thalf) %>% 
+  mutate(log2_human_vs_mouse = log2(human/mouse)) %>% 
+  distinct() %>% 
+  arrange(log2_human_vs_mouse)
+
+df_mouse2DG_vs_mouse_ranks <- df_fit_proteins_medians %>% 
+  filter(median_kdeg > 0 &
+           Sample %in% c("mouse", "mouse_2DG")) %>%
+  dplyr::select(gene_name, Sample, median_Thalf) %>% 
+  pivot_wider(names_from = Sample,
+              values_from = median_Thalf) %>% 
+  mutate(log2_mouse2DG_vs_mouse = log2(mouse_2DG/mouse)) %>%
+  distinct() %>% 
+  arrange(log2_mouse2DG_vs_mouse)
+
+df_human_vs_mouse2DG_ranks <- df_fit_proteins_medians %>% 
+  filter(median_kdeg > 0 &
+           Sample %in% c("human", "mouse_2DG")) %>%
+  dplyr::select(gene_name, Sample, median_Thalf) %>% 
+  pivot_wider(names_from = Sample,
+              values_from = median_Thalf) %>% 
+  mutate(log2_human_vs_mouse2DG = log2(human/mouse_2DG)) %>%
+  distinct() %>% 
+  arrange(log2_human_vs_mouse2DG)
+
+```
+
+human v mouse - fold change
+
+```{r, message = F, warning = F}
+
+FILENAME <- "Figure1e_deciles_human_v_mouse_fc"
+FIG_WIDTH <- 2
+FIG_HEIGHT <- 3
+
+## Get percentile of kdeg in human
+df_plot <- df_fit_proteins_medians %>%
+  ungroup() %>% 
+  filter(median_kdeg > 0 &
+           Sample == "human") %>% 
+  dplyr::select(gene_name, median_Thalf) %>% 
+  na.omit() %>% 
+  mutate(perc_rank = 1-percent_rank(median_Thalf),
+         quantile = split_quantile(-median_Thalf, type = 10)) %>% 
+  left_join(df_human_vs_mouse_ranks %>% 
+              dplyr::select(gene_name, mouse, human)) %>% 
+  mutate(quantile = case_when(
+    quantile == "1" ~ "slowest",
+    quantile == "10" ~ "fastest",
+    T ~ quantile
+  ) %>% 
+    factor(levels = c("slowest", "2", "3", "4", "5", "6", "7", "8", "9", "fastest"))) %>% 
+  ## Make signed log10 for difference
+  mutate(signed_log10_diff_human_v_mouse = case_when(
+    human - mouse > 0 ~ log10(human - mouse),
+    human - mouse < 0 ~ -log10(abs(human-mouse))),
+    human_v_mouse = log2(human/mouse)
+  )
+
+ggplot(df_plot,
+       aes(x = quantile,
+           y = human_v_mouse)) +
+  geom_boxplot(lwd = LINEWIDTH,
+               outlier.size = OUTLIER_SIZE,
+               color = "grey20",
+               fill = "grey20") +
+  stat_summary(geom = "crossbar", width=0.65, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  theme_HH_paper +
+  geom_hline(yintercept = 0,
+             lwd = LINEWIDTH) +
+  # ylab(label = bquote(~"log" [2] ~ "(T"["1/2, human"]~" / T"["1/2, mouse"]~")")) +
+  ylab(label = bquote(~"log" [2] ~ "(half-life human / mouse")) +
+  xlab("decile half-life\n(in human)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+ggsave(paste0(FILENAME, "", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame() %>% 
+           group_by(quantile) %>% 
+           summarise(median_signed_log10_diff_human_v_mouse = median(signed_log10_diff_human_v_mouse, na.rm = T),
+                     median_diff_human_v_mouse = 10^median_signed_log10_diff_human_v_mouse) %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "medians",
+         row.names = F,
+         append = TRUE)
+
+```
+
+mouse 2DG v mouse - fold change
+
+```{r, message = F, warning = F}
+
+FILENAME <- "Figure3h_deciles_mouse2DG_v_mouse_fc"
+FIG_WIDTH <- 2
+FIG_HEIGHT <- 3
+
+## Get percentile of kdeg in human
+df_plot <- df_fit_proteins_medians %>%
+  ungroup() %>% 
+  filter(median_kdeg > 0 &
+           Sample == "human") %>% 
+  dplyr::select(gene_name, median_Thalf) %>% 
+  na.omit() %>% 
+  mutate(perc_rank = 1-percent_rank(median_Thalf),
+         quantile = split_quantile(-median_Thalf, type = 10)) %>% 
+  left_join(df_mouse2DG_vs_mouse_ranks %>% 
+              dplyr::select(gene_name, mouse, mouse_2DG)) %>% 
+  mutate(quantile = case_when(
+    quantile == "1" ~ "slowest",
+    quantile == "10" ~ "fastest",
+    T ~ quantile
+  ) %>% 
+    factor(levels = c("slowest", "2", "3", "4", "5", "6", "7", "8", "9", "fastest"))) %>% 
+  ## Make signed log10 for difference
+  mutate(signed_log10_diff_mouse2DG_v_mouse = case_when(
+    mouse_2DG - mouse > 0 ~ log10(mouse_2DG - mouse),
+    mouse_2DG - mouse < 0 ~ -log10(abs(mouse_2DG-mouse))),
+    mouse2DG_v_mouse = log2(mouse_2DG/mouse)
+  )
+
+ggplot(df_plot,
+       aes(x = quantile,
+           y = mouse2DG_v_mouse)) +
+  geom_boxplot(lwd = LINEWIDTH,
+               outlier.size = OUTLIER_SIZE,
+               color = "grey20",
+               fill = "grey20") +
+  stat_summary(geom = "crossbar", width=0.65, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  theme_HH_paper +
+  geom_hline(yintercept = 0,
+             lwd = LINEWIDTH) +
+  # ylab(label = bquote(~"log" [2] ~ "(T"["1/2, mouse 2DG"]~" / T"["1/2, mouse"]~")")) +
+  ylab(label = bquote(~"log" [2] ~ "(half-life mouse 2DG / mouse")) +
+  xlab("decile half-life\n(in human)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+ggsave(paste0(FILENAME, "", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame() %>% 
+           group_by(quantile) %>% 
+           summarise(median_signed_log10_diff_mouse2DG_v_mouse = median(signed_log10_diff_mouse2DG_v_mouse, na.rm = T),
+                     median_diff_mouse2DG_v_mouse = 10^signed_log10_diff_mouse2DG_v_mouse) %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "medians",
+         row.names = F,
+         append = TRUE)
+
+```
+human v mouse 2DG, fold change
+
+```{r, message = F, warning = F}
+
+FILENAME <- "Deciles_human_v_mouse2DG_fc"
+FIG_WIDTH <- 1.5
+FIG_HEIGHT <- 3
+
+## Get percentile of kdeg in human
+df_plot <- df_fit_proteins_medians %>%
+  ungroup() %>% 
+  filter(median_kdeg > 0 &
+           Sample == "human") %>% 
+  dplyr::select(gene_name, median_Thalf) %>% 
+  na.omit() %>% 
+  mutate(perc_rank = 1-percent_rank(median_Thalf),
+         quantile = split_quantile(-median_Thalf, type = 10)) %>% 
+  left_join(df_human_vs_mouse2DG_ranks %>% 
+              dplyr::select(gene_name, human, mouse_2DG)) %>% 
+  mutate(quantile = case_when(
+    quantile == "1" ~ "slowest",
+    quantile == "10" ~ "fastest",
+    T ~ quantile
+  ) %>% 
+    factor(levels = c("slowest", "2", "3", "4", "5", "6", "7", "8", "9", "fastest"))) %>% 
+  ## Make signed log10 for difference
+  mutate(signed_log10_diff_human_v_mouse2DG = case_when(
+    human - mouse_2DG > 0 ~ log10(human - mouse_2DG),
+    human - mouse_2DG < 0 ~ -log10(abs(human - mouse_2DG))),
+    human_v_mouse2DG = log2(human/mouse_2DG)
+  )
+
+ggplot(df_plot,
+       aes(x = quantile,
+           y = human_v_mouse2DG)) +
+  geom_boxplot(lwd = LINEWIDTH,
+               outlier.size = OUTLIER_SIZE,
+               color = "grey20",
+               fill = "grey20") +
+  stat_summary(geom = "crossbar", width=0.65, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  theme_HH_paper +
+  geom_hline(yintercept = 0,
+             lwd = LINEWIDTH) +
+  # ylab(label = bquote(~"log" [2] ~ "(T"["1/2, human"]~" / T"["1/2, mouse 2DG"]~")")) +
+  ylab(label = bquote(~"log" [2] ~ "(half-life human / mouse 2DG")) +
+  xlab("decile half-life\n(in human)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+ggsave(paste0(FILENAME, "", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame() %>% 
+           group_by(quantile) %>% 
+           summarise(median_signed_log10_diff_human_v_mouse2DG = median(signed_log10_diff_human_v_mouse2DG, na.rm = T),
+                     median_diff_human_v_mouse2DG = 10^signed_log10_diff_human_v_mouse2DG) %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "medians",
+         row.names = F,
+         append = TRUE)
+
+```
+
+# GO enrichment analyses
+
+## fgsea
+
+Prepare GO term lists from Uniprot
+
+```{r, message = F, warning = F}
+# 
+# ## Get GO terms from Uniprot
+df_uniprot_GO <- read_delim("./221213_Uniprot.txt")
+
+# df_uniprot_GO <- read_delim("https://rest.uniprot.org/uniprotkb/stream?fields=accession%2Cid%2Cgo_p%2Cgo_c%2Cgo_f%2Cgo_id%2Cgene_primary&format=tsv&query=%28human%29%20AND%20%28reviewed%3Atrue%29%20AND%20%28model_organism%3A9606%29", delim = "\t")
+# 
+# write.csv(df_uniprot_GO,
+#           "df_uniprot_GO.txt",
+#           row.names = F)
+# 
+# df_uniprot_GO <- read_csv("df_uniprot_GO.txt")
+
+df_uniprot_GO <- df_uniprot_GO %>% 
+  filter(!is.na(`Gene Ontology IDs`)) %>% 
+  mutate(gene_name = map_chr(strsplit(`Gene Names`, " "), ~.x[1] %>% unlist())) %>% 
+    dplyr::select(ID = Entry,
+                  gene_name,
+                  GO_CC = `Gene Ontology (cellular component)`,
+                  GO_BP = `Gene Ontology (biological process)`,
+                  GO_MF = `Gene Ontology (molecular function)`,
+                  GO = `Gene Ontology IDs`)
+
+df_uniprot_GO_CC <- df_uniprot_GO %>% 
+  dplyr::select(gene_name, GO_CC) %>% 
+  na.omit() %>% 
+  mutate(GO_CC = strsplit(GO_CC, "; ")) %>% 
+  unnest(GO_CC)
+
+## Make list of sets
+l_uniprot_GO_CC <- split(df_uniprot_GO_CC,
+                       df_uniprot_GO_CC$GO_CC,
+                       drop = TRUE) %>% 
+  ## Choose first instance in each list (gene_name)
+  lapply('[[', 1)
+
+df_uniprot_GO_BP <- df_uniprot_GO %>% 
+  dplyr::select(gene_name, GO_BP) %>% 
+  na.omit() %>% 
+  mutate(GO_BP = strsplit(GO_BP, "; ")) %>% 
+  unnest(GO_BP)
+
+l_uniprot_GO_BP <- split(df_uniprot_GO_BP,
+                       df_uniprot_GO_BP$GO_BP,
+                       drop = TRUE) %>% 
+  ## Choose first instance in each list (gene_name)
+  lapply('[[', 1)
+
+df_uniprot_GO_MF <- df_uniprot_GO %>% 
+  dplyr::select(gene_name, GO_MF) %>% 
+  na.omit() %>% 
+  mutate(GO_MF = strsplit(GO_MF, "; ")) %>% 
+  unnest(GO_MF)
+
+l_uniprot_GO_MF <- split(df_uniprot_GO_MF,
+                       df_uniprot_GO_MF$GO_MF,
+                       drop = TRUE) %>% 
+  ## Choose first instance in each list (gene_name)
+  lapply('[[', 1)
+
+```
+
+### human v mouse
+
+```{r, message = F, warning = F, fig.height=10}
+
+human_vs_mouse_ranks <- df_human_vs_mouse_ranks$log2_human_vs_mouse
+names(human_vs_mouse_ranks) <- df_human_vs_mouse_ranks$gene_name
+
+## Remove cases, which don't have a value in one of the species
+human_vs_mouse_ranks <- na.omit(human_vs_mouse_ranks)
+
+#############################
+
+fgsea_CC <- fgsea(pathways = l_uniprot_GO_CC, 
+                  stats    = human_vs_mouse_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_CC[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_CC, human_vs_mouse_ranks)
+main_CC_Pathways <- fgsea_CC[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_CC[main_CC_Pathways], human_vs_mouse_ranks, fgsea_CC,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_CC[["endoplasmic reticulum [GO:0005783]"]],
+#                human_vs_mouse_ranks) + labs(title="endoplasmic reticulum [GO:0005783]")
+
+#############################
+fgsea_BP <- fgsea(pathways = l_uniprot_GO_BP, 
+                  stats    = human_vs_mouse_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_BP[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_BP, human_vs_mouse_ranks)
+main_BP_Pathways <- fgsea_BP[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_BP[main_BP_Pathways], human_vs_mouse_ranks, fgsea_BP,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_BP[["gluconeogenesis [GO:0006094]"]],
+#                human_vs_mouse_ranks) + labs(title="gluconeogenesis [GO:0006094]")
+
+#############################
+fgsea_MF <- fgsea(pathways = l_uniprot_GO_MF, 
+                  stats    = human_vs_mouse_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_MF[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_MF, human_vs_mouse_ranks)
+main_MF_Pathways <- fgsea_MF[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_MF[main_MF_Pathways], human_vs_mouse_ranks, fgsea_MF,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_MF[["double-stranded RNA binding [GO:0003725]"]],
+#                human_vs_mouse_ranks) + labs(title="double-stranded RNA binding [GO:0003725]")
+
+```
+
+```{r, message = F, warning = F}
+
+fgsea_combined_human_v_mouse_main <- 
+  rbind(
+    fgsea_CC %>% 
+      filter(pathway %in% main_CC_Pathways) %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>% 
+      filter(pathway %in% main_BP_Pathways) %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      filter(pathway %in% main_MF_Pathways) %>% 
+      mutate(GO_type = "MF")
+  )
+
+fgsea_combined_human_v_mouse <- 
+  rbind(
+    fgsea_CC %>% 
+      filter(padj < 0.01) %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>%
+      filter(padj < 0.01) %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      filter(padj < 0.01) %>%
+      mutate(GO_type = "MF")
+  )
+
+fgsea_combined_human_v_mouse_all <- 
+  rbind(
+    fgsea_CC %>%  
+      mutate(GO_type = "CC"),
+    fgsea_BP %>%
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      mutate(GO_type = "MF")
+  )
+
+```
+
+### mouse 2DG v mouse
+
+```{r, message = F, warning = F, fig.height=10}
+
+mouse2DG_vs_mouse_ranks <- df_mouse2DG_vs_mouse_ranks$log2_mouse2DG_vs_mouse
+names(mouse2DG_vs_mouse_ranks) <- df_mouse2DG_vs_mouse_ranks$gene_name
+
+mouse2DG_vs_mouse_ranks <- na.omit(mouse2DG_vs_mouse_ranks)
+#############################
+
+fgsea_CC <- fgsea(pathways = l_uniprot_GO_CC, 
+                  stats    = mouse2DG_vs_mouse_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_CC[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_CC, mouse2DG_vs_mouse_ranks)
+main_CC_Pathways <- fgsea_CC[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_CC[main_CC_Pathways], mouse2DG_vs_mouse_ranks, fgsea_CC,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_CC[["endoplasmic reticulum [GO:0005783]"]],
+#                mouse2DG_vs_mouse_ranks) + labs(title="endoplasmic reticulum [GO:0005783]")
+
+#############################
+fgsea_BP <- fgsea(pathways = l_uniprot_GO_BP, 
+                  stats    = mouse2DG_vs_mouse_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_BP[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_BP, mouse2DG_vs_mouse_ranks)
+main_BP_Pathways <- fgsea_BP[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_BP[main_BP_Pathways], mouse2DG_vs_mouse_ranks, fgsea_BP,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_BP[["gluconeogenesis [GO:0006094]"]],
+#                mouse2DG_vs_mouse_ranks) + labs(title="gluconeogenesis [GO:0006094]")
+
+#############################
+fgsea_MF <- fgsea(pathways = l_uniprot_GO_MF, 
+                  stats    = mouse2DG_vs_mouse_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_MF[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_MF, mouse2DG_vs_mouse_ranks)
+main_MF_Pathways <- fgsea_MF[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_MF[main_MF_Pathways], mouse2DG_vs_mouse_ranks, fgsea_MF,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_MF[["double-stranded RNA binding [GO:0003725]"]],
+#                mouse2DG_vs_mouse_ranks) + labs(title="double-stranded RNA binding [GO:0003725]")
+
+```
+
+```{r, message = F, warning = F}
+
+fgsea_combined_mouse2DG_vs_mouse_main <- 
+  rbind(
+    fgsea_CC %>% 
+      filter(pathway %in% main_CC_Pathways) %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>% 
+      filter(pathway %in% main_BP_Pathways) %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      filter(pathway %in% main_MF_Pathways) %>% 
+      mutate(GO_type = "MF")
+  )
+
+fgsea_combined_mouse2DG_vs_mouse <- 
+  rbind(
+    fgsea_CC %>% 
+      filter(padj < 0.01) %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>%
+      filter(padj < 0.01) %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      filter(padj < 0.01) %>%
+      mutate(GO_type = "MF")
+  )
+
+fgsea_combined_mouse2DG_vs_mouse_all <- 
+  rbind(
+    fgsea_CC %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>%
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      mutate(GO_type = "MF")
+  )
+
+```
+
+### human vs mouse 2DG
+
+```{r, message = F, warning = F}
+
+human_vs_mouse2DG_ranks <- df_human_vs_mouse2DG_ranks$log2_human_vs_mouse2DG
+names(human_vs_mouse2DG_ranks) <- df_human_vs_mouse2DG_ranks$gene_name
+
+human_vs_mouse2DG_ranks <- na.omit(human_vs_mouse2DG_ranks)
+
+#############################
+
+fgsea_CC <- fgsea(pathways = l_uniprot_GO_CC, 
+                  stats    = human_vs_mouse2DG_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_CC[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_CC, human_vs_mouse2DG_ranks)
+main_CC_Pathways <- fgsea_CC[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_CC[main_CC_Pathways], human_vs_mouse2DG_ranks, fgsea_CC,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_CC[["endoplasmic reticulum [GO:0005783]"]],
+#                human_vs_mouse2DG_ranks) + labs(title="endoplasmic reticulum [GO:0005783]")
+
+#############################
+fgsea_BP <- fgsea(pathways = l_uniprot_GO_BP, 
+                  stats    = human_vs_mouse2DG_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_BP[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_BP, human_vs_mouse2DG_ranks)
+main_BP_Pathways <- fgsea_BP[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_BP[main_BP_Pathways], human_vs_mouse2DG_ranks, fgsea_BP,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_BP[["gluconeogenesis [GO:0006094]"]],
+#                human_vs_mouse2DG_ranks) + labs(title="gluconeogenesis [GO:0006094]")
+
+#############################
+fgsea_MF <- fgsea(pathways = l_uniprot_GO_MF, 
+                  stats    = human_vs_mouse2DG_ranks,
+                  minSize  = 15,
+                  maxSize  = 500)
+
+collapsedPathways <- collapsePathways(fgsea_MF[order(pval)][padj < 0.01], 
+                                      l_uniprot_GO_MF, human_vs_mouse2DG_ranks)
+main_MF_Pathways <- fgsea_MF[pathway %in% collapsedPathways$mainPathways][
+                         order(-NES), pathway]
+
+plotGseaTable(l_uniprot_GO_MF[main_MF_Pathways], human_vs_mouse2DG_ranks, fgsea_MF,
+              gseaParam = 0.5)
+
+# plotEnrichment(l_uniprot_GO_MF[["double-stranded RNA binding [GO:0003725]"]],
+#                human_vs_mouse2DG_ranks) + labs(title="double-stranded RNA binding [GO:0003725]")
+
+```
+
+```{r, message = F, warning = F}
+
+fgsea_combined_human_vs_mouse2DG_main <- 
+  rbind(
+    fgsea_CC %>% 
+      filter(pathway %in% main_CC_Pathways) %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>% 
+      filter(pathway %in% main_BP_Pathways) %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      filter(pathway %in% main_MF_Pathways) %>% 
+      mutate(GO_type = "MF")
+  )
+
+fgsea_combined_human_vs_mouse2DG <- 
+  rbind(
+    fgsea_CC %>% 
+      filter(padj < 0.01) %>% 
+      mutate(GO_type = "CC"),
+    fgsea_BP %>%
+      filter(padj < 0.01) %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>% 
+      filter(padj < 0.01) %>%
+      mutate(GO_type = "MF")
+  )
+
+fgsea_combined_human_vs_mouse2DG_all <- 
+  rbind(
+    fgsea_CC %>%  
+      mutate(GO_type = "CC"),
+    fgsea_BP %>% 
+      mutate(GO_type = "BP"),
+    fgsea_MF %>%
+      mutate(GO_type = "MF")
+  )
+
+```
+
+```{r, message = F, warning = F}
+rm(fgsea_CC, fgsea_BP, fgsea_MF, main_BP_Pathways, main_CC_Pathways, main_MF_Pathways)
+```
+
+## Dotplots of all enrichments together
+
+```{r, fig.height=3, fig.width=5}
+
+# df_main_pathways <-
+#   rbind(fgsea_combined_human_v_mouse_main %>% 
+#           mutate(comparison = "human v mouse"),
+#         fgsea_combined_human_vs_mouse2DG_main %>% 
+#           mutate(comparison = "human v mouse 2DG"),
+#         fgsea_combined_mouse2DG_vs_mouse_main %>% 
+#           mutate(comparison = "mouse 2DG v mouse"))
+# 
+# 
+# FILENAME <- "All_GO_enrichments_main_pathways"
+# FIG_WIDTH <- 5
+# FIG_HEIGHT <- 3.25
+# 
+# plots <- list()
+# 
+# ## cycle through each pathway to get ordering correct
+# for(i in unique(df_main_pathways$comparison)){
+#   df_temp <- df_main_pathways %>% 
+#     filter(comparison == i)
+#   for(j in unique(df_temp$GO_type)){
+#     df_temp1 <- df_temp %>% 
+#       filter(GO_type == j)
+#     
+#     if(nrow(df_temp1)>0){
+#       
+#       plots[[length(plots)+1]] <-
+#         ## Dotplot of main pathways
+#         ggplot(df_temp1 %>% 
+#                  group_by(comparison, GO_type) %>% 
+#                  mutate(pathway = fct_reorder(pathway, NES)),
+#                aes(x = NES,
+#                    y = pathway,
+#                    size = size,
+#                    fill = -log10(padj))) +
+#         geom_point(shape = 21,
+#                    linewidth = LINEWIDTH,
+#                    color = "grey20") +
+#         theme_HH_paper +
+#         geom_vline(xintercept = 0,
+#                    lwd = LINEWIDTH,
+#                    linetype = "dashed",
+#                    color = "grey") +
+#         xlim(c(-2.8,2.8))+
+#         scale_fill_gradient(
+#           low = "grey90",
+#           high = "firebrick",
+#           limits = c(-log10(0.05), 6),
+#           oob = squish
+#         ) +
+#         labs(fill = bquote(-log[10]*"(adj. P val)")) +
+#         ylab("") +
+#         theme(legend.key.size = unit(0.3, "cm")) +
+#         scale_y_discrete(labels = function(x) str_wrap(x, width = 40)) +
+#         facet_wrap(~comparison + GO_type,
+#                    scales = "free")
+#       
+#     }
+#   }
+# }
+# 
+# ggexport(ggarrange(plotlist = plots, nrow = 1, ncol = 1, widths = 12),
+#          filename = paste0(FILENAME, "_", VERSION,".pdf"),
+#          width = FIG_WIDTH, height = FIG_HEIGHT)
+
+#################################
+
+df_all_pathways <-
+  rbind(fgsea_combined_human_v_mouse %>% 
+          filter(padj < 0.01) %>% 
+          mutate(comparison = "human v mouse"),
+        fgsea_combined_human_vs_mouse2DG %>% 
+          filter(padj < 0.01) %>% 
+          mutate(comparison = "human v mouse 2DG"),
+        fgsea_combined_mouse2DG_vs_mouse %>% 
+          filter(padj < 0.01) %>% 
+          mutate(comparison = "mouse 2DG v mouse"))
+
+
+FILENAME <- "All_GO_enrichments_all_pathways"
+FIG_WIDTH <- 5
+FIG_HEIGHT <- 3.25
+
+plots <- list()
+
+## cycle through each pathway to get ordering correct
+for(i in unique(df_all_pathways$comparison)){
+  df_temp <- df_all_pathways %>% 
+    filter(comparison == i)
+  for(j in unique(df_temp$GO_type)){
+    df_temp1 <- df_temp %>% 
+      filter(GO_type == j)
+    
+    if(nrow(df_temp1)>0){
+      
+      plots[[length(plots)+1]] <-
+        ## Dotplot of main pathways
+        ggplot(df_temp1 %>% 
+                 group_by(comparison, GO_type) %>% 
+                 mutate(pathway = fct_reorder(pathway, NES)),
+               aes(x = NES,
+                   y = pathway,
+                   size = size,
+                   fill = -log10(padj))) +
+        geom_point(shape = 21,
+                   linewidth = LINEWIDTH,
+                   color = "grey20") +
+        theme_HH_paper +
+        geom_vline(xintercept = 0,
+                   lwd = LINEWIDTH,
+                   linetype = "dashed",
+                   color = "grey") +
+        xlim(c(-2.8,2.8))+
+        scale_fill_gradient(
+          low = "grey90",
+          high = "firebrick",
+          limits = c(-log10(0.05), 6),
+          oob = squish
+        ) +
+        labs(fill = bquote(-log[10]*"(adj. P val)")) +
+        ylab("") +
+        theme(legend.key.size = unit(0.3, "cm")) +
+        scale_y_discrete(labels = function(x) str_wrap(x, width = 40)) +
+        facet_wrap(~comparison + GO_type,
+                   scales = "free")
+      
+    }
+  }
+}
+
+ggexport(ggarrange(plotlist = plots, nrow = 1, ncol = 1, widths = 12),
+         filename = paste0(FILENAME, "_", VERSION, ".pdf"),
+         width = FIG_WIDTH, height = FIG_HEIGHT)
+
+```
+
+### Export GO enrichments
+
+```{r}
+
+all_fgsea <-
+  rbind(
+    fgsea_combined_human_v_mouse_all %>% 
+      mutate(comparison = "human v mouse"),
+    fgsea_combined_human_vs_mouse2DG_all %>% 
+      mutate(comparison = "human v mouse2DG"),
+    fgsea_combined_mouse2DG_vs_mouse_all %>% 
+      mutate(comparison = "mouse2DG v mouse")
+  ) %>% 
+  rowwise() %>% 
+  mutate(leadingEdge = paste(leadingEdge, collapse = ", "))
+
+write.csv(all_fgsea,
+          "Gene_Set_Enrichment_results_fgsea.csv",
+          row.names = F)
+
+
+
+```
+
+# Subcellular localization
+
+Get unique and non-unique annotation
+
+```{r}
+
+## Only look at the following GO terms
+GO_id <- tibble(
+  "GO" =
+    c("GO:0005576",
+      "GO:0031012",
+      "GO:0005886",
+      "GO:0005856",
+      "GO:0005737",
+      "GO:0005829",
+      "GO:0005739",
+      "GO:0005777",
+      "GO:0005764",
+      "GO:0005783",
+      "GO:0005794",
+      "GO:0005634",
+      "GO:0031965",
+      "GO:0005654",
+      "GO:0005730"),
+  "CC" =
+    c("extracellular region",
+      "extracellular matrix",
+      "plasma membrane",
+      "cytoskeleton",
+      "cytoplasm",
+      "cytosol",
+      "mitochondrion",
+      "peroxisome",
+      "lysosome",
+      "ER",
+      "Golgi apparatus",
+      "nucleus",
+      "nuclear membrane",
+      "nucleoplasm",
+      "nucleolus"))
+
+  df_in <- df_uniprot_GO %>% 
+    dplyr::select(ID, gene_name, GO) %>% 
+    mutate(GO = strsplit(GO, "; ")) %>% 
+    unnest(GO) %>% 
+    left_join(GO_id) %>% 
+    group_by(ID, gene_name) %>% 
+    mutate(n_CC = n_distinct(CC, na.rm = T))
+  
+  ## Make lists of all annotations (i.e. non-unique and unique)
+  df_all <- df_in %>% 
+    dplyr::select(ID, gene_name, CC) %>% 
+    na.omit() %>% 
+    distinct() %>% 
+    group_by(ID, gene_name) %>% 
+    summarise(CC_all = paste(CC, collapse = ";"))
+  
+  ## Combine everything
+  df_CC_annotation <- df_in %>% 
+    dplyr::select(ID, gene_name) %>% 
+    distinct() %>% 
+    left_join(
+      df_all
+    )
+
+rm(df_all, df_in)
+```
+
+## H v M - Non-unique annotation
+
+```{r}
+
+FILENAME <- "Figure2a_CC_annotation_human_v_mouse_line_at_zero"
+FIG_WIDTH <- 4
+FIG_HEIGHT <- 4
+
+df_nonunique_annotation <- df_CC_annotation %>% 
+  dplyr::select(gene_name, CC_all) %>% 
+  mutate(CC_all = strsplit(CC_all, ";")) %>% 
+  unnest(CC_all) %>% 
+  na.omit()
+
+df_plot <- 
+  rbind(df_human_vs_mouse_ranks %>% 
+          mutate(CC_all = "all"),
+        df_human_vs_mouse_ranks %>% 
+          left_join(df_nonunique_annotation) %>% 
+          na.omit()
+  ) %>% 
+  mutate(CC_all = factor(CC_all, levels = c(
+    "all", "extracellular matrix", "extracellular region", "plasma membrane", "cytoskeleton", "cytoplasm", "cytosol", "mitochondrion", "lysosome", "Golgi apparatus", "peroxisome", "ER", "nuclear membrane", "nucleus", "nucleoplasm", "nucleolus"
+  )))
+
+ggplot(df_plot,
+       aes(x = CC_all,
+           y = log2_human_vs_mouse,
+           fill = CC_all,
+           color = CC_all)) +
+    geom_boxplot(lwd = LINEWIDTH,
+               outlier.size = OUTLIER_SIZE) +
+  stat_summary(geom = "crossbar", width=0.65, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  theme_HH_paper +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  stat_summary(fun.data = function(x){
+    data.frame(y=min(x)-0.5,
+               label = length(x))
+  }, geom="text", color = "black",
+  size = 2) +
+  ggtitle("GO: CC annotation") +
+  # geom_hline(yintercept = df_plot %>% filter(CC_all == "all") %>% pull(log2_human_vs_mouse) %>% median(na.rm = T),
+  #            lwd = LINEWIDTH) +
+  geom_hline(yintercept = 0,
+             lwd = LINEWIDTH) +  
+  # stat_compare_means(
+  #   label = "p.signif",
+  #   method = "t.test", ref.group = "all",
+  #   hide.ns = T
+  # ) +
+  scale_fill_manual(values = c(COLOR_CC,"all" = "grey")) +
+  scale_color_manual(values = c(COLOR_CC,"all" = "grey")) +
+    theme(legend.position = "none") +
+  xlab("") +
+  # ylab(label = bquote(~ "T" [1/2] ~ "log" ["2"] * "(human / mouse)"))
+  ylab(label = bquote(~ "log" ["2"] * "(half life human / mouse)"))
+
+
+ggsave(paste0(FILENAME, "", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame() %>% 
+           group_by(CC_all) %>% 
+           summarise(median_log2_human_vs_mouse = median(log2_human_vs_mouse, na.rm = T)) %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "medians",
+         row.names = F,
+         append = TRUE)
+
+write.xlsx2(compare_means(log2_human_vs_mouse ~ CC_all, data = df_plot, group_by = "CC_all", method = "t.test", ref.group = "all") %>% 
+           as.data.frame() %>% 
+             ## Add significance levels from adjusted p values
+             mutate(p.adj.signif = case_when(
+               p.adj < 0.0001 ~ "****",
+               p.adj < 0.001 ~ "***",
+               p.adj < 0.01 ~ "**",
+               p.adj < 0.05 ~ "*",
+               T ~ "ns"
+             )),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "t_test",
+         row.names = F,
+         append = TRUE)
+
+```
+
+## H v M2DG - Non-unique annotation
+
+```{r}
+
+FILENAME <- "Figure4c_CC_annotation_human_v_mouse2DG_line_at_zero"
+FIG_WIDTH <- 4
+FIG_HEIGHT <- 4
+
+df_nonunique_annotation <- df_CC_annotation %>% 
+  dplyr::select(gene_name, CC_all) %>% 
+  mutate(CC_all = strsplit(CC_all, ";")) %>% 
+  unnest(CC_all) %>% 
+  na.omit()
+
+df_plot <- 
+  rbind(df_human_vs_mouse2DG_ranks %>% 
+          mutate(CC_all = "all"),
+        df_human_vs_mouse2DG_ranks %>% 
+          left_join(df_nonunique_annotation) %>% 
+          na.omit()
+  ) %>% 
+  mutate(CC_all = factor(CC_all, levels = c(
+    "all", "extracellular matrix", "extracellular region", "plasma membrane", "cytoskeleton", "cytoplasm", "cytosol", "mitochondrion", "lysosome", "Golgi apparatus", "peroxisome", "ER", "nuclear membrane", "nucleus", "nucleoplasm", "nucleolus"
+  )))
+
+ggplot(df_plot,
+       aes(x = CC_all,
+           y = log2_human_vs_mouse2DG,
+           fill = CC_all,
+           color = CC_all)) +
+    geom_boxplot(lwd = LINEWIDTH,
+               outlier.size = OUTLIER_SIZE) +
+  stat_summary(geom = "crossbar", width=0.65, lwd = 0.3, fatten = 0, color="white", fun.data = function(x){ return(c(y=median(x), ymin=median(x), ymax=median(x)))}) +
+  theme_HH_paper +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  stat_summary(fun.data = function(x){
+    data.frame(y=min(x)-0.5,
+               label = length(x))
+  }, geom="text", color = "black",
+  size = 2) +
+  ggtitle("GO: CC annotation") +
+  # geom_hline(yintercept = df_plot %>% filter(CC_all == "all") %>% pull(log2_human_vs_mouse2DG) %>% median(na.rm = T),
+  #            lwd = LINEWIDTH) +
+  geom_hline(yintercept = 0,
+             lwd = LINEWIDTH) +  
+  # stat_compare_means(
+  #   label = "p.signif",
+  #   method = "t.test", ref.group = "all",
+  #   hide.ns = T
+  # ) +
+  scale_fill_manual(values = c(COLOR_CC,"all" = "grey")) +
+  scale_color_manual(values = c(COLOR_CC,"all" = "grey")) +
+    theme(legend.position = "none") +
+  xlab("") +
+  # ylab(label = bquote(~ "T" [1/2] ~ "log" ["2"] * "(human / mouse - 2DG)"))
+  ylab(label = bquote(~ "log" ["2"] * "(half life human / mouse_2DG)"))
+
+ggsave(paste0(FILENAME, "", VERSION, ".pdf"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+ggsave(paste0(FILENAME, "", VERSION, ".svg"),
+       width = FIG_WIDTH,
+       height = FIG_HEIGHT)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "all_data",
+         row.names = F)
+
+write.xlsx2(df_plot %>% 
+           as.data.frame() %>% 
+           group_by(CC_all) %>% 
+           summarise(median_log2_human_vs_mouse2DG = median(log2_human_vs_mouse2DG, na.rm = T)) %>% 
+           ungroup() %>% 
+           as.data.frame(),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "medians",
+         row.names = F,
+         append = TRUE)
+
+write.xlsx2(compare_means(log2_human_vs_mouse2DG ~ CC_all, data = df_plot, group_by = "CC_all", method = "t.test", ref.group = "all") %>% 
+           as.data.frame() %>% 
+             ## Add significance levels from adjusted p values
+             mutate(p.adj.signif = case_when(
+               p.adj < 0.0001 ~ "****",
+               p.adj < 0.001 ~ "***",
+               p.adj < 0.01 ~ "**",
+               p.adj < 0.05 ~ "*",
+               T ~ "ns"
+             )),
+         file = paste0(FILENAME, ".xlsx"),
+         sheet = "t_test",
+         row.names = F,
+         append = TRUE)
+
+```
+
+## Export all results
+
+```{r}
+
+write.csv(df_fit_proteins_medians,
+          "median_Half-lives_over_replicates.csv",
+          row.names = F)
+
+df_export <-
+  rbind(
+    df_F_stats_human_v_mouse %>%
+          dplyr::select(gene_name, Adj_P_value,  Hit_type) %>%
+          left_join(df_human_vs_mouse_ranks %>% 
+                      dplyr::select(gene_name, log2_human_vs_mouse)) %>%
+          mutate(comparison = "human v mouse") %>%
+          dplyr::rename(logFC = log2_human_vs_mouse),
+        df_human_vs_mouse2DG_ranks %>% 
+          dplyr::select(gene_name, logFC = log2_human_vs_mouse2DG) %>% 
+          mutate(comparison = "human v mouse 2DG",
+                 Adj_P_value = NA,
+                 Hit_type = NA),
+        df_F_stats_mouse2DG_v_mouse %>%
+          dplyr::select(gene_name, Adj_P_value, Hit_type) %>% 
+          left_join(df_mouse2DG_vs_mouse_ranks %>% 
+                      dplyr::select(gene_name, log2_mouse2DG_vs_mouse)) %>%
+          mutate(comparison = "mouse 2DG v mouse") %>% 
+          dplyr::rename(logFC = log2_mouse2DG_vs_mouse)) %>% 
+  ## Add annotations
+  left_join(df_uniprot_GO %>% 
+              dplyr::select(gene_name, GO_CC, GO_BP, GO_MF))
+
+write.csv(df_export,
+          "Fold_changes_and_annotations.csv",
+          row.names = F)
+
+rm(df_export, df_export_kdegs)
+```
+
+## Placeholder
+
+```{r}
+
+```
+
